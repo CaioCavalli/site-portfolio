@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./includes/dbconn.php)",
+      "Read(./includes/auth.php)",
+      "Read(./includes/geo.php)",
+      "Read(./.env)"
+    ]
+  }
+}

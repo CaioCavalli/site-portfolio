@@ -1,4 +1,13 @@
-capturadetela
-não usados
-indexantigos
-includes
+# Local-only folders
+capturadetela/
+não usados/
+indexantigos/
+
+# Secrets (never commit)
+includes/dbconn.php
+includes/auth.php
+includes/geo.php
+.env
+
+# Personal Claude Code settings
+.claude/settings.local.json
