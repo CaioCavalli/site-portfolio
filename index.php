@@ -150,9 +150,9 @@
               </a>
             </li>
             <li>
-              <a href="https://www.linkedin.com/in/caiotuliocavalli/"
+              <a href="https://www.linkedin.com/in/caiotoliocavalli/"
                 target="_blank" rel="noopener"
-                aria-label="Perfil no LinkedIn de Caio Tulio Cavalli">
+                aria-label="Caio Tolio Cavalli on LinkedIn">
                 <i class="fab fa-linkedin" aria-hidden="true"></i>
               </a>
             </li>
