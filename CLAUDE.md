@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Personal portfolio website (PHP). Owner: Caio Cavalli. I am a beginner with Git, so explain what you are doing in plain language and work in small steps.
 
 ## About the project
@@ -18,9 +20,27 @@ These contain credentials and are intentionally git-ignored:
 - `includes/geo.php` (geolocation API)
 - `.env`, if it exists
 
-Use `includes/dbconn.example.php`, `includes/auth.example.php` and `includes/geo.example.php` to understand how these files are used. Never ask me to paste real credentials in the chat. Never put secrets in any file that is committed.
+Never ask me to paste real credentials in the chat. Never put secrets in any file that is committed.
 
 Do not touch these folders: `capturadetela/`, `não usados/`, `indexantigos/`.
+
+## Architecture
+
+- No build step, package manager, linter or test suite. Served by WAMP from `C:\wamp64\www\caiosite\portfolio`
+  (locally: http://localhost/caiosite/portfolio/). Syntax-check PHP with `php -l <file>`.
+- The public site is a single page, `index.php`. Home / About / Resume / Portfolio / Contact are `<section data-id="...">`
+  blocks switched client-side by `js/main.js` (menu links use `#about-me`, `#resume`, etc.). The Portfolio section is
+  hidden from the menu; its items load `portfolio-N{en,it}.html` via `ajax-page-load`.
+- `index.php` includes `includes/geo.php` (provides `$ip`, `$geo`, `$pais` = visitor country) and `includes/dbconn.php`
+  (provides `$conn`, a PDO connection). Every page load inserts a row into the `log` table.
+- Page text comes from the database: `header` (meta tags), `about` (id 1 = EN, id 2 = IT),
+  `resume` (`language` 1 = EN / 2 = IT; `categoria` Education/Formazione, Experience/Esperienza).
+  Skills and knowledge lists are hard-coded in `index.php`.
+- The contact form posts to `index.php` itself and inserts into the `form` table (name, email, subject, message, ip, geo, dia).
+- `admin/` is a separate back office built on the CoolAdmin template (Bootstrap 5, UI text in Portuguese).
+  `admin/index.php` is the login (sessions, CSRF token, 5-try lockout, `admin_users` table with `password_hash`).
+  Protected pages call `require_login()` from `includes/auth.php`; `admin/topo.php` is the shared menu;
+  `admin/message.php` reads the contact-form messages. Several admin pages are unused template demos (e.g. `form.php`).
 
 ## Working rules
 

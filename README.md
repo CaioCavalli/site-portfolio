@@ -29,9 +29,6 @@ This repository is a fresh restart of the site. The current goals for this versi
 ```
 .
 ├── includes/                # Shared PHP code (connections, helpers)
-│   ├── dbconn.example.php   # Template: database connection
-│   ├── auth.example.php     # Template: authentication
-│   └── geo.example.php      # Template: geolocation API
 ├── .claude/settings.json    # Claude Code permissions (protects secret files)
 ├── CLAUDE.md                # Instructions for Claude Code
 └── README.md
@@ -42,10 +39,8 @@ The real `dbconn.php`, `auth.php` and `geo.php` files hold credentials and API k
 ## Running it locally
 
 1. Install PHP and a local web server (for example XAMPP).
-2. Copy each `includes/*.example.php` file to the same name without `.example`, for example `dbconn.example.php` → `dbconn.php`.
-3. Open the copies and replace the placeholder values with your own credentials.
-4. Create the database table used by the contact form.
-5. Serve the project folder and open it in your browser.
+2. Create the database table used by the contact form.
+3. Serve the project folder and open it in your browser.
 
 ## Contact
 
