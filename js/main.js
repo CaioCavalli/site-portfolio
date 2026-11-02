@@ -232,7 +232,12 @@
 
         //Form Controls
         $('.form-control')
-            .val('')
+            .each(function(){
+                // Keep labels raised on fields refilled by the server after a validation error
+                if($(this).val().length > 0) {
+                    $(this).parent('.form-group').addClass('form-group-focus');
+                }
+            })
             .on("focusin", function(){
                 $(this).parent('.form-group').addClass('form-group-focus');
             })

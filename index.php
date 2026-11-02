@@ -1,3 +1,110 @@
+<?php
+
+session_set_cookie_params([
+  'httponly' => true,
+  'secure'   => !empty($_SERVER['HTTPS']),
+  'samesite' => 'Lax',
+]);
+
+session_start();
+
+include("./includes/geo.php");
+include("./includes/dbconn.php");
+
+date_default_timezone_set('Europe/Rome');
+$now = date('Y-m-d H:i:s');
+
+// Contact form: CSRF token, spam checks, validation and Post/Redirect/Get
+$form_limits = ['name' => 100, 'email' => 200, 'subject' => 150, 'message' => 5000];
+$form_values = ['name' => '', 'email' => '', 'subject' => '', 'message' => ''];
+$form_errors = [];
+
+if (empty($_SESSION['csrf_contact'])) {
+  $_SESSION['csrf_contact'] = bin2hex(random_bytes(32));
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+  foreach ($form_values as $field => $value) {
+    $raw = $_POST[$field] ?? '';
+    $form_values[$field] = is_string($raw) ? trim($raw) : '';
+  }
+
+  $csrf_form = $_POST['csrf'] ?? '';
+  $honeypot_form = $_POST['website'] ?? '';
+  $form_started = $_SESSION['contact_form_time'] ?? 0;
+
+  if (!is_string($csrf_form) || !hash_equals($_SESSION['csrf_contact'], $csrf_form)) {
+    $form_errors[] = 'Your session has expired. Please try again.';
+  } elseif ($honeypot_form !== '') {
+    // Bots fill the hidden field: pretend it worked, save nothing
+    header('Location: index.php?sent=1#contact');
+    exit;
+  } elseif (time() - $form_started < 3) {
+    $form_errors[] = 'Please wait a few seconds and try again.';
+  } else {
+    if ($form_values['name'] === '') {
+      $form_errors[] = 'Please enter your name.';
+    }
+    if (!filter_var($form_values['email'], FILTER_VALIDATE_EMAIL)) {
+      $form_errors[] = 'Please enter a valid email address.';
+    }
+    if ($form_values['subject'] === '') {
+      $form_errors[] = 'Please enter a subject.';
+    }
+    if ($form_values['message'] === '') {
+      $form_errors[] = 'Please enter a message.';
+    }
+    foreach ($form_limits as $field => $limit) {
+      if (mb_strlen($form_values[$field]) > $limit) {
+        $form_errors[] = 'The ' . $field . ' field is too long (max ' . $limit . ' characters).';
+      }
+    }
+  }
+
+  if (!$form_errors) {
+    try {
+      $sql_recent = "SELECT COUNT(*) FROM form WHERE ip = :ip AND dia > :since";
+      $stmt = $conn->prepare($sql_recent);
+      $stmt->execute([':ip' => $ip, ':since' => date('Y-m-d H:i:s', time() - 600)]);
+
+      if ((int)$stmt->fetchColumn() >= 3) {
+        $form_errors[] = 'You have sent several messages recently. Please try again later.';
+      } else {
+        $sql_form = "INSERT INTO form (name, email, subject, message, ip, geo, dia)
+                     VALUES (:name, :email, :subject, :message, :ip, :geo, :dia)";
+        $stmt = $conn->prepare($sql_form);
+        $saved = $stmt->execute([
+          ':name' => $form_values['name'],
+          ':email' => $form_values['email'],
+          ':subject' => $form_values['subject'],
+          ':message' => $form_values['message'],
+          ':ip' => $ip,
+          ':geo' => $geo,
+          ':dia' => $now,
+        ]);
+
+        if (!$saved) {
+          throw new RuntimeException('Contact form insert failed');
+        }
+
+        $_SESSION['contact_sent_name'] = $form_values['name'];
+        header('Location: index.php?sent=1#contact');
+        exit;
+      }
+    } catch (Throwable $e) {
+      error_log('Contact form error: ' . $e->getMessage());
+      $form_errors[] = 'Sorry, something went wrong. Please try again later.';
+    }
+  }
+} else {
+  $_SESSION['contact_form_time'] = time();
+}
+
+$mensagem_conclusao = isset($_GET['sent']);
+$name_form = $_SESSION['contact_sent_name'] ?? '';
+unset($_SESSION['contact_sent_name']);
+
+?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -7,13 +114,6 @@
   <title>Caio Cavalli</title>
 
   <?php
-
-  // Para entrar em uma pasta usa o "ponto barra'./ e para sair "ponto ponto barra"../
-  include("./includes/geo.php");
-  include("./includes/dbconn.php");
-
-  date_default_timezone_set('Europe/Rome');
-  $now = date('Y-m-d H:i:s');
 
   $sql_log = "INSERT INTO log (ip, geo, dia) 
             VALUES (:ip, :geo, :dia)";
@@ -73,6 +173,18 @@
         /* Cor de fundo */
         color: #ffffff;
         /* Cor do texto */
+      }
+
+      .contact-form .alert-danger {
+        border-left: 3px solid #9b5750;
+        background-color: #f9f1f0;
+        color: #9b5750;
+        padding: 10px 15px;
+        margin-bottom: 25px;
+      }
+
+      .contact-form .alert-danger p {
+        margin: 0;
       }
     </style>
 
@@ -914,36 +1026,6 @@
                 </div>
                 <!-- End of Contact Info -->
 
-                <?php
-
-                $mensagem_conclusao = 0;
-
-                if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-                  $dados_form = $_POST;
-
-                  $name_form = trim($dados_form['name'] ?? '');
-                  $email_form = trim($dados_form['email'] ?? '');
-                  $subject_form = trim($dados_form['subject'] ?? '');
-                  $message_form = trim($dados_form['message'] ?? '');
-
-                  $sql_form = "INSERT INTO form (name, email, subject, message, ip, geo, dia)
-                 VALUES (:name, :email, :subject, :message, :ip, :geo, :dia)";
-                  $stmt = $conn->prepare($sql_form);
-                  $stmt->execute([
-                    ':name' => $name_form,
-                    ':email' => $email_form,
-                    ':subject' => $subject_form,
-                    ':message' => $message_form,
-                    ':ip' => $ip,
-                    ':geo' => $geo,
-                    ':dia' => $now,
-                  ]);
-
-                  $mensagem_conclusao = 1;
-                }
-
-                ?>
-
                 <!-- Contact Form -->
                 <div class="col-xs-12 col-sm-8">
                   <div id="map" class="map">
@@ -953,43 +1035,51 @@
 
                     <?php
 
-                    $mensagem_conclusao = ($_SERVER['REQUEST_METHOD'] === 'POST') ? 1 : 0;
-
-                    $name_form = $mensagem_conclusao ? htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8') : '';
-                    ?>
-
-
-                    <?php
-
-                    if ($mensagem_conclusao < 1):
+                    if (!$mensagem_conclusao):
 
                     ?>
                       <div class="block-title">
                         <h3>How Can I <span>Help You?</span></h3>
                       </div>
 
-                      <form class="contact-form" action="#contact" method="post">
-                        <div class="messages"></div>
+                      <form class="contact-form" action="index.php#contact" method="post">
+                        <div class="messages">
+                          <?php if ($form_errors): ?>
+                            <div class="alert alert-danger">
+                              <?php foreach ($form_errors as $form_error): ?>
+                                <p><?= htmlspecialchars($form_error, ENT_QUOTES, 'UTF-8') ?></p>
+                              <?php endforeach; ?>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+
+                        <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf_contact'], ENT_QUOTES, 'UTF-8') ?>">
+
+                        <!-- Honeypot: hidden from people, filled in by bots -->
+                        <div style="position:absolute; left:-9999px;" aria-hidden="true">
+                          <label for="form_website">Website</label>
+                          <input id="form_website" type="text" name="website" tabindex="-1" autocomplete="off">
+                        </div>
 
                         <div class="controls two-columns">
                           <div class="fields clearfix">
                             <div class="left-column">
                               <div class="form-group form-group-with-icon">
-                                <input id="form_name" type="text" name="name" class="form-control" required>
+                                <input id="form_name" type="text" name="name" class="form-control" maxlength="<?= $form_limits['name'] ?>" value="<?= htmlspecialchars($form_values['name'], ENT_QUOTES, 'UTF-8') ?>" required>
                                 <label>Full Name</label>
                                 <div class="form-control-border"></div>
                                 <div class="help-block with-errors"></div>
                               </div>
 
                               <div class="form-group form-group-with-icon">
-                                <input id="form_email" type="email" name="email" class="form-control" required>
+                                <input id="form_email" type="email" name="email" class="form-control" maxlength="<?= $form_limits['email'] ?>" value="<?= htmlspecialchars($form_values['email'], ENT_QUOTES, 'UTF-8') ?>" required>
                                 <label>Email Address</label>
                                 <div class="form-control-border"></div>
                                 <div class="help-block with-errors"></div>
                               </div>
 
                               <div class="form-group form-group-with-icon">
-                                <input id="form_subject" type="text" name="subject" class="form-control" required>
+                                <input id="form_subject" type="text" name="subject" class="form-control" maxlength="<?= $form_limits['subject'] ?>" value="<?= htmlspecialchars($form_values['subject'], ENT_QUOTES, 'UTF-8') ?>" required>
                                 <label>Subject</label>
                                 <div class="form-control-border"></div>
                                 <div class="help-block with-errors"></div>
@@ -998,7 +1088,7 @@
 
                             <div class="right-column">
                               <div class="form-group form-group-with-icon">
-                                <textarea id="form_message" name="message" class="form-control" rows="7" required></textarea>
+                                <textarea id="form_message" name="message" class="form-control" rows="7" maxlength="<?= $form_limits['message'] ?>" required><?= htmlspecialchars($form_values['message'], ENT_QUOTES, 'UTF-8') ?></textarea>
                                 <label>Message</label>
                                 <div class="form-control-border"></div>
                                 <div class="help-block with-errors"></div>
@@ -1018,7 +1108,11 @@
 
                       <br><br><br>
                       <center>
-                        <h4>Thank you <span style="color:#9b5750;"><?= $name_form ?></span>! Message sent successfully!</h4>
+                        <?php if ($name_form !== ''): ?>
+                          <h4>Thank you <span style="color:#9b5750;"><?= htmlspecialchars($name_form, ENT_QUOTES, 'UTF-8') ?></span>! Message sent successfully!</h4>
+                        <?php else: ?>
+                          <h4>Thank you! Message sent successfully!</h4>
+                        <?php endif; ?>
                       </center>
 
                     <?php endif; ?>
