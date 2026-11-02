@@ -117,27 +117,13 @@
           <li>
             <a href="#about-me" class="nav-anim">
               <span class="menu-icon lnr lnr-user"></span>
-              <span class="link-text">
-                <?php
-                if ($pais == "Italy") {
-                  echo "Chi Sono";
-                } else {
-                  echo "About Me";
-                }
-                ?></span>
+              <span class="link-text">About Me</span>
             </a>
           </li>
           <li>
             <a href="#resume" class="nav-anim">
               <span class="menu-icon lnr lnr-graduation-hat"></span>
-              <span class="link-text">
-                <?php
-                if ($pais == "Italy") {
-                  echo "Curriculum";
-                } else {
-                  echo "Resume";
-                }
-                ?></span>
+              <span class="link-text">Resume</span>
             </a>
           </li>
           <!-- <li>
@@ -149,14 +135,7 @@
           <li>
             <a href="#contact" class="nav-anim">
               <span class="menu-icon lnr lnr-envelope"></span>
-              <span class="link-text">
-                <?php
-                if ($pais == "Italy") {
-                  echo "Contatto";
-                } else {
-                  echo "Contact";
-                }
-                ?></span>
+              <span class="link-text">Contact</span>
             </a>
           </li>
         </ul>
@@ -181,19 +160,7 @@
         </div>
 
         <div class="header-buttons">
-          <a href=<?php
-                  if ($pais == "Italy") {
-                    echo "/download/CV%20-%20IT%20-%20Data%20Analyst%20Caio%20Cavalli.pdf";
-                  } else {
-                    echo "/download/CV%20-%20EN%20-%20Data%20Analyst%20Caio%20Cavalli.pdf";
-                  }
-                  ?> class="btn btn-primary" download=<?php
-                                                      if ($pais == "Italy") {
-                                                        echo "CV-Caio-Cavalli-IT.pdf";
-                                                      } else {
-                                                        echo "CV-Caio-Cavalli-EN.pdf";
-                                                      }
-                                                      ?>>Download CV</a>
+          <a href="/download/CV%20-%20EN%20-%20Data%20Analyst%20Caio%20Cavalli.pdf" class="btn btn-primary" download="CV-Caio-Cavalli-EN.pdf">Download CV</a>
         </div>
 
         <div class="copyrights">© 2025 All rights reserved.</div>
@@ -228,48 +195,19 @@
                     <div class="owl-carousel text-rotation">
 
                       <div class="item">
-                        <div class="sp-subtitle">
-                          <?php
-                          if ($pais == "Italy") {
-                            echo "Benvenuto";
-                          } else {
-                            echo "Welcome";
-                          }
-                          ?>
-                        </div>
+                        <div class="sp-subtitle">Welcome</div>
                       </div>
 
                       <div class="item">
-                        <div class="sp-subtitle">
-                          <?php
-                          if ($pais == "Italy") {
-                            echo "Analista di Dati";
-                          } else {
-                            echo "Data Analyst";
-                          }
-                          ?></div>
+                        <div class="sp-subtitle">Data Analyst</div>
                       </div>
 
                       <div class="item">
-                        <div class="sp-subtitle">
-                          <?php
-                          if ($pais == "Italy") {
-                            echo "BI Specialista";
-                          } else {
-                            echo "BI Specialist";
-                          }
-                          ?></div>
+                        <div class="sp-subtitle">BI Specialist</div>
                       </div>
 
                       <div class="item">
-                        <div class="sp-subtitle">
-                          <?php
-                          if ($pais == "Italy") {
-                            echo "Sviluppatore Python";
-                          } else {
-                            echo "Python Developer";
-                          }
-                          ?></div>
+                        <div class="sp-subtitle">Python Developer</div>
                       </div>
 
                       <div class="item">
@@ -287,11 +225,7 @@
 
           <?php
 
-          if ($pais == "Italy") {
-            $id_about = 2;
-          } else {
-            $id_about = 1;
-          }
+          $id_about = 1;
 
           $sql_about = "SELECT * 
                   FROM about 
@@ -447,13 +381,7 @@
                 <div class="col-xs-12 col-sm-4">
                   <div class="fun-fact gray-default">
                     <i class="lnr lnr-apartment"></i>
-                    <h4><?php
-                        if ($pais == "Italy") {
-                          echo "Architetto e Urbanista";
-                        } else {
-                          echo "Architect and Urban Planner";
-                        }
-                        ?></h4>
+                    <h4>Architect and Urban Planner</h4>
                     <span class="fun-fact-block-text"></span>
                   </div>
                 </div>
@@ -461,13 +389,7 @@
                 <div class="col-xs-12 col-sm-4">
                   <div class="fun-fact gray-default">
                     <i class="lnr lnr-music-note"></i>
-                    <h4><?php
-                        if ($pais == "Italy") {
-                          echo "Musicista";
-                        } else {
-                          echo "Musician";
-                        }
-                        ?></h4>
+                    <h4>Musician</h4>
                     <span class="fun-fact-block-text"></span>
                   </div>
                 </div>
@@ -475,13 +397,7 @@
                 <div class="col-xs-12 col-sm-4 ">
                   <div class="fun-fact gray-default">
                     <i class="lnr lnr-magic-wand"></i>
-                    <h4><?php
-                        if ($pais == "Italy") {
-                          echo "Compositore";
-                        } else {
-                          echo "Songwriter";
-                        }
-                        ?></h4>
+                    <h4>Songwriter</h4>
                     <span class="fun-fact-block-text"></span>
                   </div>
                 </div>
@@ -493,15 +409,11 @@
 
           <?php
 
-          if ($pais == "Italy") {
-            $language_resume = 2;
-          } else {
-            $language_resume = 1;
-          }
+          $language_resume = 1;
 
           $sql_resume_title = "SELECT * 
                   FROM resume 
-                  WHERE language = :language AND categoria IN ('Formazione','Education')
+                  WHERE language = :language AND categoria = 'Education'
                   ORDER BY data_ref DESC;";
 
           $stmt = $conn->prepare($sql_resume_title);
@@ -533,7 +445,7 @@
 
                   $sql_resume = "SELECT * 
                           FROM resume 
-                          WHERE language = :language AND categoria IN ('Formazione','Education')
+                          WHERE language = :language AND categoria = 'Education'
                           ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume);
@@ -567,7 +479,7 @@
                   <?php
                   $sql_resume_title = "SELECT * 
                   FROM resume 
-                  WHERE language = :language AND categoria IN ('Esperienza','Experience')
+                  WHERE language = :language AND categoria = 'Experience'
                   ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume_title);
@@ -587,7 +499,7 @@
 
                   $sql_resume = "SELECT * 
                       FROM resume 
-                      WHERE language = :language AND categoria IN ('Esperienza','Experience')
+                      WHERE language = :language AND categoria = 'Experience'
                       ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume);
@@ -709,13 +621,7 @@
 
                     <!-- Skill 11 -->
                     <div class="skill clearfix">
-                      <h4><?php
-                          if ($pais == "Italy") {
-                            echo "Python";
-                          } else {
-                            echo "Python";
-                          }
-                          ?></h4>
+                      <h4>Python</h4>
                       <div class="skill-value">65%</div>
                     </div>
                     <div class="skill-container skill-11">
@@ -725,13 +631,7 @@
 
                     <!-- Skill 12 -->
                     <div class="skill clearfix">
-                      <h4><?php
-                          if ($pais == "Italy") {
-                            echo "SQL";
-                          } else {
-                            echo "SQL";
-                          }
-                          ?></h4>
+                      <h4>SQL</h4>
                       <div class="skill-value">80%</div>
                     </div>
                     <div class="skill-container skill-12">
@@ -741,13 +641,7 @@
 
                     <!-- Skill 1 -->
                     <div class="skill clearfix">
-                      <h4><?php
-                          if ($pais == "Italy") {
-                            echo "PHP (Orientato Agli Oggetti - OOP)";
-                          } else {
-                            echo "PHP (Object-Oriented - OOP)";
-                          }
-                          ?></h4>
+                      <h4>PHP (Object-Oriented - OOP)</h4>
                       <div class="skill-value">75%</div>
                     </div>
                     <div class="skill-container skill-1">
@@ -777,13 +671,7 @@
 
                     <!-- Skill 2 -->
                     <div class="skill clearfix">
-                      <h4><?php
-                          if ($pais == "Italy") {
-                            echo "Struttura Dati";
-                          } else {
-                            echo "Data Structure";
-                          }
-                          ?></h4>
+                      <h4>Data Structure</h4>
                       <div class="skill-value">70%</div>
                     </div>
                     <div class="skill-container skill-2">
@@ -828,30 +716,12 @@
 
                   <!-- Knowledges -->
                   <div class="block-title">
-                    <h3><?php
-                        if ($pais == "Italy") {
-                          echo "Conoscenza";
-                        } else {
-                          echo "Knowledge";
-                        }
-                        ?></h3>
+                    <h3>Knowledge</h3>
                   </div>
 
                   <ul class="knowledges">
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "Analista di Dati";
-                        } else {
-                          echo "Data Analyst";
-                        }
-                        ?></li>
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "Risoluzione dei problemi";
-                        } else {
-                          echo "Problem Solving";
-                        }
-                        ?></li>
+                    <li>Data Analyst</li>
+                    <li>Problem Solving</li>
                     <li>SQL</li>
                     <li>Python</li>
                     <li>ETL & ELT</li>
@@ -870,40 +740,16 @@
                     <li>Data Quality</li>
                     <li>Data Management</li>
                     <li>Database</li>
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "PHP Orientato Agli Oggetti (OOP)";
-                        } else {
-                          echo "Object-Oriented PHP (OOP)";
-                        }
-                        ?></li>
+                    <li>Object-Oriented PHP (OOP)</li>
                     <li>PHP</li>
                     <li>MySQL</li>
                     <li>Bootstrap</li>
                     <li>jQuery</li>
                     <li>CRUD</li>
                     <li>Git & GitHub</li>
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "Collaborazione Creativa";
-                        } else {
-                          echo "Creative Collaboration";
-                        }
-                        ?></li>
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "Gestione del Tempo";
-                        } else {
-                          echo "Time-Management";
-                        }
-                        ?></li>
-                    <li><?php
-                        if ($pais == "Italy") {
-                          echo "Prevenzione Proattiva dei Problemi";
-                        } else {
-                          echo "Proactive Prevention of Problems";
-                        }
-                        ?></li>
+                    <li>Creative Collaboration</li>
+                    <li>Time-Management</li>
+                    <li>Proactive Prevention of Problems</li>
                   </ul>
                   <!-- End of Knowledges -->
                 </div>
@@ -938,13 +784,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/Smart Step Flooring - Nida Digital/Smart Step Flooring - Nida Digital 01.jpg" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-1it.html";
-                                    } else {
-                                      echo "portfolio-1en.html";
-                                    }
-                                    ?>"
+                          <a href="portfolio-1en.html"
                             class="ajax-page-load"></a>
                         </div>
 
@@ -956,13 +796,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/Evolution Cleaning Company - Nida Digital/Evolution Cleaning Company - Nida Digital 01.jpg" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-2it.html";
-                                    } else {
-                                      echo "portfolio-2en.html";
-                                    }
-                                    ?>" class="ajax-page-load"></a>
+                          <a href="portfolio-2en.html" class="ajax-page-load"></a>
                         </div>
 
                         <i class="far fa-file-alt"></i>
@@ -973,13 +807,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/APRAFUR - Nida Digital/APRAFUR - Nida Digital 01.jpg" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-3it.html";
-                                    } else {
-                                      echo "portfolio-3en.html";
-                                    }
-                                    ?>" class="ajax-page-load"></a>
+                          <a href="portfolio-3en.html" class="ajax-page-load"></a>
                         </div>
 
                         <i class="far fa-file-alt"></i>
@@ -990,13 +818,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/Caio Cavalli Portfolio/Caio Cavalli 01.jpg" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-4it.html";
-                                    } else {
-                                      echo "portfolio-4en.html";
-                                    }
-                                    ?>" class="ajax-page-load"></a>
+                          <a href="portfolio-4en.html" class="ajax-page-load"></a>
                         </div>
 
                         <i class="far fa-file-alt"></i>
@@ -1007,13 +829,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/Napkinn/Napkinn 06.png" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-5it.html";
-                                    } else {
-                                      echo "portfolio-5en.html";
-                                    }
-                                    ?>" class="ajax-page-load"></a>
+                          <a href="portfolio-5en.html" class="ajax-page-load"></a>
                         </div>
 
                         <i class="far fa-file-alt"></i>
@@ -1024,13 +840,7 @@
                       <figure class="item standard" data-groups='["category_all", "category_detailed"]'>
                         <div class="portfolio-item-img">
                           <img src="img/portfolio/Dental Uni/Dental Uni 06.png" alt="Media Project 2" title="" />
-                          <a href="<?php
-                                    if ($pais == "Italy") {
-                                      echo "portfolio-6it.html";
-                                    } else {
-                                      echo "portfolio-6en.html";
-                                    }
-                                    ?>" class="ajax-page-load"></a>
+                          <a href="portfolio-6en.html" class="ajax-page-load"></a>
                         </div>
 
                         <i class="far fa-file-alt"></i>
@@ -1050,13 +860,7 @@
           <!-- Contact Subpage -->
           <section data-id="contact" class="animated-section">
             <div class="page-title">
-              <h2><?php
-                  if ($pais == "Italy") {
-                    echo "Contatto";
-                  } else {
-                    echo "Contact";
-                  }
-                  ?></h2>
+              <h2>Contact</h2>
             </div>
 
             <div class="section-content">
@@ -1072,13 +876,7 @@
                       class="lm-stretched-link"
                       aria-label="Abrir Google Maps: Milan"></a>
                     <i class="lnr lnr-map-marker" aria-hidden="true"></i>
-                    <h4><?php
-                        if ($pais == "Italy") {
-                          echo "Milano";
-                        } else {
-                          echo "Milan";
-                        }
-                        ?></h4>
+                    <h4>Milan</h4>
                     <span class="lm-info-block-value"></span>
                     <span class="lm-info-block-text"></span>
                   </div>
@@ -1158,7 +956,6 @@
                     $mensagem_conclusao = ($_SERVER['REQUEST_METHOD'] === 'POST') ? 1 : 0;
 
                     $name_form = $mensagem_conclusao ? htmlspecialchars($_POST['name'] ?? '', ENT_QUOTES, 'UTF-8') : '';
-                    $italiano  = ($pais === 'Italy' || $pais === 'Italia' || $pais === 'IT');
                     ?>
 
 
@@ -1221,17 +1018,7 @@
 
                       <br><br><br>
                       <center>
-                        <?php
-                        if ($italiano):
-                        ?>
-                          <h4>Grazie <span style="color:#9b5750;"><?= $name_form ?></span>! Messaggio inviato con successo!</h4>
-                        <?php
-                        else:
-                        ?>
-                          <h4>Thank you <span style="color:#9b5750;"><?= $name_form ?></span>! Message sent successfully!</h4>
-                        <?php
-                        endif;
-                        ?>
+                        <h4>Thank you <span style="color:#9b5750;"><?= $name_form ?></span>! Message sent successfully!</h4>
                       </center>
 
                     <?php endif; ?>
