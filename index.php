@@ -360,14 +360,10 @@ unset($_SESSION['contact_sent_name']);
           $text_2_about = $dados_about['text_2'] ?? '';
           $text_3_about = $dados_about['text_3'] ?? '';
           $text_4_about = $dados_about['text_4'] ?? '';
-          $title_age_about = $dados_about['title_age'] ?? '';
-          $age_about = $dados_about['age'] ?? '';
           $title_residence_about = $dados_about['title_residence'] ?? '';
           $residence_about = $dados_about['residence'] ?? '';
           $title_email_about = $dados_about['title_email'] ?? '';
           $email_about = $dados_about['email'] ?? '';
-          $title_phone_about = $dados_about['title_phone'] ?? '';
-          $phone_about = $dados_about['phone'] ?? '';
 
           ?>
 
@@ -389,11 +385,6 @@ unset($_SESSION['contact_sent_name']);
                   <div class="info-list">
                     <ul>
                       <li>
-                        <span class="title"><?= $title_age_about; ?></span>
-                        <span class="value"><?= $age_about; ?></span>
-                      </li>
-
-                      <li>
                         <span class="title"><?= $title_residence_about; ?></span>
                         <span class="value"><?= $residence_about; ?></span>
                       </li>
@@ -401,11 +392,6 @@ unset($_SESSION['contact_sent_name']);
                       <li>
                         <span class="title"><?= $title_email_about; ?></span>
                         <span class="value"><a href=""><?= $email_about; ?></a></span>
-                      </li>
-
-                      <li>
-                        <span class="title"><?= $title_phone_about; ?></span>
-                        <span class="value"><?= $phone_about; ?></span>
                       </li>
                     </ul>
                   </div>
