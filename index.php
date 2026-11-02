@@ -160,7 +160,7 @@
         </div>
 
         <div class="header-buttons">
-          <a href="/download/CV%20-%20EN%20-%20Data%20Analyst%20Caio%20Cavalli.pdf" class="btn btn-primary" download="CV-Caio-Cavalli-EN.pdf">Download CV</a>
+          <a href="download/CV%20-%20Data%20Analyst%20-%20Caio%20Cavalli.pdf" class="btn btn-primary" download="CV-Caio-Cavalli.pdf">Download CV</a>
         </div>
 
         <div class="copyrights">© 2025 All rights reserved.</div>
