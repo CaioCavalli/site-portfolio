@@ -41,3 +41,8 @@ Do not touch these folders: `capturadetela/`, `não usados/`, `indexantigos/`.
 
 - Write all commit messages in English, imperative mood, short and specific (max ~50 characters, no trailing period). Example: `Add contact form validation`.
 - Never commit or push without asking me first. I run the Git commands myself.
+
+## Language
+
+- Always reply to me in Brazilian Portuguese (pt-BR).
+- Keep code, code comments, file contents (README, etc.) and commit messages in English.
