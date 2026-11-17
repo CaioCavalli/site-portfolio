@@ -8,8 +8,57 @@ session_set_cookie_params([
 
 session_start();
 
-include("./includes/geo.php");
-include("./includes/dbconn.php");
+// Safe defaults, in case geo.php or dbconn.php fail.
+$ip = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+$geo = '';
+$conn = null;
+
+try {
+  include("./includes/geo.php");
+} catch (Throwable $e) {
+  error_log('index.php geo.php failed: ' . $e->getMessage());
+}
+
+try {
+  include("./includes/dbconn.php");
+} catch (Throwable $e) {
+  error_log('index.php database connection failed: ' . $e->getMessage());
+  $conn = null;
+}
+
+/**
+ * Database helpers for this page: on any error they log it and return an empty result,
+ * so visitors never see technical details and the rest of the page still loads.
+ */
+function db_one($conn, string $sql, array $params = []): array
+{
+  if (!$conn instanceof PDO) {
+    return [];
+  }
+  try {
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+  } catch (Throwable $e) {
+    error_log('index.php query failed: ' . $e->getMessage());
+    return [];
+  }
+}
+
+function db_all($conn, string $sql, array $params = []): array
+{
+  if (!$conn instanceof PDO) {
+    return [];
+  }
+  try {
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+  } catch (Throwable $e) {
+    error_log('index.php query failed: ' . $e->getMessage());
+    return [];
+  }
+}
 
 date_default_timezone_set('Europe/Rome');
 $now = date('Y-m-d H:i:s');
@@ -117,24 +166,25 @@ unset($_SESSION['contact_sent_name']);
 
   // Log the visit, unless this device was marked "don't count my visits"
   // in the admin dashboard (cookie set by admin/dashboard.php).
-  if (($_COOKIE['skip_visit_log'] ?? '') !== '1') {
-    $sql_log = "INSERT INTO log (ip, geo, dia)
-              VALUES (:ip, :geo, :dia)";
-    $stmt = $conn->prepare($sql_log);
-    $stmt->execute([':ip' => $ip, ':geo' => $geo, ':dia' => $now]);
+  if (($_COOKIE['skip_visit_log'] ?? '') !== '1' && $conn instanceof PDO) {
+    try {
+      $sql_log = "INSERT INTO log (ip, geo, dia)
+                VALUES (:ip, :geo, :dia)";
+      $stmt = $conn->prepare($sql_log);
+      $stmt->execute([':ip' => $ip, ':geo' => $geo, ':dia' => $now]);
+    } catch (Throwable $e) {
+      error_log('index.php visit log failed: ' . $e->getMessage());
+    }
   }
 
 
   $id_header = 1;
 
-  $sql_header = "SELECT title, description, keywords, author 
-        FROM header 
+  $sql_header = "SELECT title, description, keywords, author
+        FROM header
         WHERE id = :id";
 
-  $stmt = $conn->prepare($sql_header);
-  $stmt->execute([':id' => $id_header]);
-
-  $dados_header = $stmt->fetch();
+  $dados_header = db_one($conn, $sql_header, [':id' => $id_header]);
 
   $title = $dados_header['title'] ?? '';
   $description = $dados_header['description'] ?? '';
@@ -347,10 +397,7 @@ unset($_SESSION['contact_sent_name']);
                   FROM about 
                   WHERE id = :id";
 
-          $stmt = $conn->prepare($sql_about);
-          $stmt->execute([':id' => $id_about]);
-
-          $dados_about = $stmt->fetch();
+          $dados_about = db_one($conn, $sql_about, [':id' => $id_about]);
 
           $main_title_1_about = $dados_about['main_title_1'] ?? '';
           $main_title_2_about = $dados_about['main_title_2'] ?? '';
@@ -513,15 +560,21 @@ unset($_SESSION['contact_sent_name']);
 
           $language_resume = 1;
 
-          $sql_resume_title = "SELECT *
+          $sql_resume_experience = "SELECT *
                   FROM resume
                   WHERE language = :language AND categoria = 'Experience'
                   ORDER BY data_ref DESC;";
 
-          $stmt = $conn->prepare($sql_resume_title);
-          $stmt->execute([':language' => $language_resume]);
+          $sql_resume_education = "SELECT *
+                  FROM resume
+                  WHERE language = :language AND categoria = 'Education'
+                  ORDER BY data_ref DESC;";
 
-          $dados_resume = $stmt->fetch();
+          $resume_experience = db_all($conn, $sql_resume_experience, [':language' => $language_resume]);
+          $resume_education = db_all($conn, $sql_resume_education, [':language' => $language_resume]);
+
+          // Page title and section headings come from the first row of each section.
+          $dados_resume = $resume_experience[0] ?? [];
 
           $main_title_1_resume = $dados_resume['main_title_1'] ?? '';
           $categoria_resume_1 = $dados_resume['categoria'] ?? '';
@@ -543,22 +596,10 @@ unset($_SESSION['contact_sent_name']);
                     <h3><?= $categoria_resume_1; ?></h3>
                   </div>
 
-                  <?php
-
-                  $sql_resume = "SELECT * 
-                          FROM resume 
-                          WHERE language = :language AND categoria = 'Experience'
-                          ORDER BY data_ref DESC;";
-
-                  $stmt = $conn->prepare($sql_resume);
-                  $stmt->execute([':language' => $language_resume]);
-
-                  ?>
-
                   <div class="timeline timeline-second-style clearfix">
                     <?php
 
-                    while ($linha = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    foreach ($resume_experience as $linha) {
 
                     ?>
                       <div class="timeline-item clearfix">
@@ -579,39 +620,17 @@ unset($_SESSION['contact_sent_name']);
                   <div class="white-space-50"></div>
 
                   <?php
-                  $sql_resume_title = "SELECT *
-                  FROM resume
-                  WHERE language = :language AND categoria = 'Education'
-                  ORDER BY data_ref DESC;";
-
-                  $stmt = $conn->prepare($sql_resume_title);
-                  $stmt->execute([':language' => $language_resume]);
-
-                  $dados_resume = $stmt->fetch();
-
-                  $categoria_resume_2 = $dados_resume['categoria'] ?? '';
-
+                  $categoria_resume_2 = $resume_education[0]['categoria'] ?? '';
                   ?>
 
                   <div class="block-title">
                     <h3><?= $categoria_resume_2; ?></h3>
                   </div>
 
-                  <?php
-
-                  $sql_resume = "SELECT *
-                      FROM resume
-                      WHERE language = :language AND categoria = 'Education'
-                      ORDER BY data_ref DESC;";
-
-                  $stmt = $conn->prepare($sql_resume);
-                  $stmt->execute([':language' => $language_resume]);
-                  ?>
-
                   <div class="timeline timeline-second-style clearfix">
                     <?php
 
-                    while ($linha = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    foreach ($resume_education as $linha) {
 
                     ?>
 
