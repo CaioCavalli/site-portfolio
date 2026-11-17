@@ -70,9 +70,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         unset($_POST['username']);
 
         // --- EMAIL ---
-        $rawEmail = trim($_POST['email'] ?? '');
+        // The e-mail is the login name, so changing it also requires the current password.
+        $rawEmail = trim((string)($_POST['email'] ?? ''));
         $newEmail = filter_var($rawEmail, FILTER_VALIDATE_EMAIL);
-        if ($newEmail && strcasecmp($newEmail, $currentEmail) !== 0) {
+        $emailCurPass = (string)($_POST['current_password'] ?? '');
+        if ($newEmail && strcasecmp($newEmail, $currentEmail) !== 0 && trim($emailCurPass) === '') {
+            $flash = ['type' => 'warning', 'msg' => 'Para trocar o email, preencha também a senha atual.'];
+        } elseif ($newEmail && strcasecmp($newEmail, $currentEmail) !== 0 && !password_verify(trim($emailCurPass), $currentHash)) {
+            $flash = ['type' => 'danger', 'msg' => 'Senha atual incorreta. O email não foi alterado.'];
+        } elseif ($newEmail && strcasecmp($newEmail, $currentEmail) !== 0) {
             $q = $conn->prepare('SELECT 1 FROM admin_users WHERE email = :email AND id <> :id LIMIT 1');
             $q->execute([':email' => $newEmail, ':id' => $userId]);
             if ($q->fetchColumn()) {
@@ -200,6 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 </div>
                                                 <input type="email" id="email" name="email" placeholder="Email" class="form-control" value="<?= htmlspecialchars($currentEmail, ENT_QUOTES) ?>">
                                             </div>
+                                            <small class="form-text text-muted">Para trocar o email, preencha também a senha atual.</small>
                                         </div>
                                         <div class="mb-3">
                                             <div class="input-group">

@@ -196,11 +196,11 @@ unset($_SESSION['contact_sent_name']);
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <title><?= $title; ?></title>
+    <title><?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-    <meta name="description" content="<?= $description; ?>" />
-    <meta name="keywords" content="<?= $keywords; ?>" />
-    <meta name="author" content="<?= $author; ?>" />
+    <meta name="description" content="<?= htmlspecialchars($description, ENT_QUOTES, 'UTF-8') ?>" />
+    <meta name="keywords" content="<?= htmlspecialchars($keywords, ENT_QUOTES, 'UTF-8') ?>" />
+    <meta name="author" content="<?= htmlspecialchars($author, ENT_QUOTES, 'UTF-8') ?>" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Caio Cavalli" />

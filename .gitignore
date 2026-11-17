@@ -11,3 +11,6 @@ includes/geo.php
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# macOS folder metadata (reveals file names)
+.DS_Store
