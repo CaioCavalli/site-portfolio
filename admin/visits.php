@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+date_default_timezone_set('Europe/Rome'); // same time zone used by index.php to log visits
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 require_once __DIR__ . '/../includes/dbconn.php';
