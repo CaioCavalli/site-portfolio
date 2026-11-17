@@ -1,0 +1,5 @@
+# The files in this folder are only loaded by other PHP files (include/require),
+# which works at file-system level. Nobody needs to open them in a browser.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>

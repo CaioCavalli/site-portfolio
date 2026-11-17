@@ -1,0 +1,52 @@
+# Security settings for the whole site (Apache).
+# Each block is wrapped in <IfModule>, so a server without that module just ignores it.
+# If the site shows "500 Internal Server Error" after uploading this file,
+# remove the line "Options -Indexes" first (some hosts do not allow it).
+
+# Do not list folder contents (e.g. /download/, /js/) when there is no index file.
+Options -Indexes
+
+# ---------- Security headers ----------
+<IfModule mod_headers.c>
+    # Do not let other sites show these pages inside a frame (clickjacking).
+    Header always set X-Frame-Options "SAMEORIGIN"
+    # Browsers must not guess file types (stops some script tricks).
+    Header always set X-Content-Type-Options "nosniff"
+    # Send only the domain (not the full URL) to other sites when following links.
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # This site never needs the camera, microphone or the visitor's location.
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # Do not reveal the PHP version.
+    Header always unset X-Powered-By
+    Header unset X-Powered-By
+</IfModule>
+
+# ---------- PHP errors (when PHP runs as an Apache module, e.g. WAMP) ----------
+# Errors go to the PHP error log, never to the visitor's screen.
+# Hosts that run PHP-FPM/CGI use the .user.ini file instead.
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_flag expose_php Off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_flag log_errors On
+    php_flag expose_php Off
+</IfModule>
+
+# ---------- Block files that must never be downloaded ----------
+# Hidden files (.user.ini, .DS_Store, .env...), docs, database dumps, logs and backups.
+<FilesMatch "(^\.|\.(md|sql|log|bak|old|orig|swp|ini|env|lock)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
+
+# Hidden or local-only folders, in case they are ever uploaded by mistake.
+<IfModule mod_alias.c>
+    RedirectMatch 404 "/\.(git|claude)(/|$)"
+    RedirectMatch 404 "/(capturadetela|indexantigos|n.o usados)(/|$)"
+</IfModule>

@@ -1,0 +1,6 @@
+# Files that are only included by other admin pages, never opened directly.
+<FilesMatch "^(topo|visit-helpers)\.php$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
