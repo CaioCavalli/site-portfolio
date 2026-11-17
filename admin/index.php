@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+date_default_timezone_set('Europe/Rome');
 
 session_set_cookie_params([
     'httponly' => true,
@@ -13,7 +14,70 @@ session_start();
 require_once __DIR__ . '/../includes/dbconn.php';
 require_once __DIR__ . '/../includes/geo.php';
 
-$redirectlogin = '/admin/dashboard.php';
+// Relative URL: works both locally (/caiosite/portfolio/admin/) and in production (/admin/).
+$redirectlogin = 'dashboard.php';
+
+// ---------- Brute-force protection (table `login_attempts`) ----------
+// Failed logins are stored in the database, so clearing cookies does not reset the count.
+const LOGIN_MAX_PER_IP     = 5;    // failed attempts allowed per IP...
+const LOGIN_IP_WINDOW_MIN  = 15;   // ...within this many minutes
+const LOGIN_MAX_GLOBAL     = 30;   // failed attempts allowed from all IPs together...
+const LOGIN_GLOBAL_WINDOW  = 60;   // ...within this many minutes (stops attacks spread over many IPs)
+
+// Real connection IP (cannot be faked with headers like X-Forwarded-For).
+$clientIp = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45);
+
+function minutes_ago(int $minutes): string
+{
+    return date('Y-m-d H:i:s', time() - $minutes * 60);
+}
+
+/**
+ * True when this IP, or all IPs together, failed too many times recently.
+ * If the check itself fails (e.g. table missing), login keeps working and the error is logged,
+ * so the owner is never locked out by a technical problem.
+ */
+function login_is_blocked(PDO $conn, string $ip): bool
+{
+    try {
+        $stmt = $conn->prepare('SELECT COUNT(*) FROM login_attempts WHERE ip = :ip AND attempted_at >= :since');
+        $stmt->execute([':ip' => $ip, ':since' => minutes_ago(LOGIN_IP_WINDOW_MIN)]);
+        if ((int)$stmt->fetchColumn() >= LOGIN_MAX_PER_IP) {
+            return true;
+        }
+
+        $stmt = $conn->prepare('SELECT COUNT(*) FROM login_attempts WHERE attempted_at >= :since');
+        $stmt->execute([':since' => minutes_ago(LOGIN_GLOBAL_WINDOW)]);
+        return (int)$stmt->fetchColumn() >= LOGIN_MAX_GLOBAL;
+    } catch (Throwable $e) {
+        error_log('admin/index.php login_attempts check failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function login_record_failure(PDO $conn, string $ip, string $email): void
+{
+    try {
+        $stmt = $conn->prepare('INSERT INTO login_attempts (ip, email, attempted_at) VALUES (:ip, :email, :now)');
+        $stmt->execute([':ip' => $ip, ':email' => mb_substr($email, 0, 255), ':now' => date('Y-m-d H:i:s')]);
+
+        // Housekeeping: keep only the last 24 hours.
+        $stmt = $conn->prepare('DELETE FROM login_attempts WHERE attempted_at < :old');
+        $stmt->execute([':old' => minutes_ago(24 * 60)]);
+    } catch (Throwable $e) {
+        error_log('admin/index.php login_attempts insert failed: ' . $e->getMessage());
+    }
+}
+
+function login_clear_failures(PDO $conn, string $ip): void
+{
+    try {
+        $stmt = $conn->prepare('DELETE FROM login_attempts WHERE ip = :ip');
+        $stmt->execute([':ip' => $ip]);
+    } catch (Throwable $e) {
+        error_log('admin/index.php login_attempts cleanup failed: ' . $e->getMessage());
+    }
+}
 
 if (!empty($_SESSION['auth'])) {
     header("Location: $redirectlogin");
@@ -25,7 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && empty($_SESSION['csrf_login'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrfOk = hash_equals($_SESSION['csrf_login'] ?? '', $_POST['csrf'] ?? '');
+    $postedCsrf = $_POST['csrf'] ?? '';
+    $csrfOk = is_string($postedCsrf) && hash_equals($_SESSION['csrf_login'] ?? '', $postedCsrf);
     if (!$csrfOk) {
         $_SESSION['csrf_login'] = bin2hex(random_bytes(32));
         header('Location: index.php?erro=csrf');
@@ -33,15 +98,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     unset($_SESSION['csrf_login']);
 
-    $tries = $_SESSION['login_tries'] ?? ['count' => 0, 'until' => 0];
-    if (time() < ($tries['until'] ?? 0)) {
+    if (login_is_blocked($conn, $clientIp)) {
         header('Location: index.php?erro=wait');
         exit;
     }
 
-    $email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
+    $rawEmail = $_POST['email'] ?? '';
+    $rawEmail = is_string($rawEmail) ? trim($rawEmail) : '';
+    $email = filter_var($rawEmail, FILTER_VALIDATE_EMAIL);
     $password = $_POST['password'] ?? '';
-    if (!$email || $password === '') {
+    if (!$email || !is_string($password) || $password === '') {
+        login_record_failure($conn, $clientIp, $rawEmail);
         header('Location: index.php?erro=1');
         exit;
     }
@@ -60,25 +127,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'email' => $user['email'],
         ];
 
-        date_default_timezone_set('Europe/Rome');
-        $now = (new DateTime('now', new DateTimeZone('Europe/Rome')))->format('Y-m-d H:i:s');
+        $now = date('Y-m-d H:i:s');
         try {
             $stmt = $conn->prepare("UPDATE admin_users SET last_login = :now WHERE id = :id");
             $stmt->execute([':now' => $now, ':id' => $user['id']]);
         } catch (Throwable $e) {
         }
 
-        $_SESSION['login_tries'] = ['count' => 0, 'until' => 0];
+        login_clear_failures($conn, $clientIp);
 
         header("Location: $redirectlogin");
         exit;
     }
 
-    $tries['count'] = ($tries['count'] ?? 0) + 1;
-    if ($tries['count'] >= 5) {
-        $tries = ['count' => 0, 'until' => time() + 5 * 60];
-    }
-    $_SESSION['login_tries'] = $tries;
+    login_record_failure($conn, $clientIp, $email);
 
     header('Location: index.php?erro=1');
     exit;
