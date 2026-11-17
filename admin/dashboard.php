@@ -36,7 +36,8 @@ $uniqueByDay  = array_fill_keys($days, []);
 $messagesByDay = array_fill_keys($days, 0);
 $uniqueIps = [];
 $countries = [];
-$botsIgnored = 0;
+$botsSelf = 0;   // user agent says it is a crawler
+$botsCloud = 0;  // comes from a cloud / hosting provider
 $messages30 = 0;
 $latestMessages = [];
 $loadError = false;
@@ -53,8 +54,13 @@ try {
         }
 
         $geo = parse_geo((string)($row['geo'] ?? ''));
-        if (is_bot($geo['navegador'])) {
-            $botsIgnored++;
+        $type = visit_type($geo);
+        if ($type === 'bot') {
+            $botsSelf++;
+            continue;
+        }
+        if ($type === 'cloud') {
+            $botsCloud++;
             continue;
         }
 
@@ -186,7 +192,8 @@ $cards = [
                                 <h2 class="title-1">overview</h2>
                             </div>
                             <small class="form-text text-muted">
-                                Bots ignored in the last <?= DAYS_LONG ?> days: <?= (int)$botsIgnored ?>.
+                                Bots ignored in the last <?= DAYS_LONG ?> days: <?= number_format($botsSelf + $botsCloud) ?>
+                                (<?= number_format($botsSelf) ?> self-declared, <?= number_format($botsCloud) ?> from cloud servers).
                             </small>
                         </div>
                     </div>

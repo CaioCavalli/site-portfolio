@@ -11,6 +11,21 @@ declare(strict_types=1);
 const BOT_PATTERN = 'bot|crawl|spider|slurp';
 
 /**
+ * Cloud / hosting providers, matched only against the `isp` and `org` fields
+ * (never `as`: home Iliad connections show "SCALEWAY" there).
+ * Real people browse from telecom operators, so these visits are treated as bots.
+ * Deliberately left out:
+ *  - plain "google" (Google Fiber is a home ISP) -> only "google llc" / "google cloud"
+ *  - Akamai / Cloudflare (used by Apple iCloud Private Relay for real Safari users)
+ *    -> only "akamai connected cloud" (ex-Linode servers)
+ * Lowercase, no quotes: the pattern is also used inside an SQL string.
+ */
+const CLOUD_PATTERN = 'amazon|aws|microsoft|azure|google llc|google cloud|digitalocean|linode'
+    . '|akamai connected cloud|ovh|hetzner|contabo|vultr|choopa|oracle cloud|alibaba|tencent'
+    . '|leaseweb|m247|cdnext|datacamp|cdn77|hostinger|scaleway|meta platforms|facebook'
+    . '|dataprovider|palo alto networks|censys';
+
+/**
  * Parse the `geo` column ("key=value;key=value;...;navegador=<user agent>").
  * The user agent is always the last key and may itself contain ";",
  * so everything after "navegador=" is taken as-is.
@@ -43,14 +58,43 @@ function is_bot(string $userAgent): bool
     return (bool)preg_match('/' . BOT_PATTERN . '/i', $userAgent);
 }
 
+// True when the visit comes from a cloud / hosting provider (see CLOUD_PATTERN).
+function is_cloud(array $geo): bool
+{
+    $pattern = '/' . CLOUD_PATTERN . '/i';
+    return preg_match($pattern, $geo['isp'] ?? '') === 1
+        || preg_match($pattern, $geo['org'] ?? '') === 1;
+}
+
 /**
- * SQL condition that keeps only non-bot rows of `log`.
- * Same rule as is_bot(), applied to the user-agent part of `geo`.
+ * Classify a parsed visit:
+ *  'bot'     - the user agent says it is a crawler
+ *  'cloud'   - comes from a cloud / hosting provider
+ *  'visitor' - everything else
+ */
+function visit_type(array $geo): string
+{
+    if (is_bot($geo['navegador'] ?? '')) {
+        return 'bot';
+    }
+    if (is_cloud($geo)) {
+        return 'cloud';
+    }
+    return 'visitor';
+}
+
+/**
+ * SQL condition that keeps only 'visitor' rows of `log`.
+ * Same rules as visit_type(), applied to the raw `geo` text:
+ *  - user-agent part (after "navegador=") must not match BOT_PATTERN
+ *  - the isp= / org= values (before "navegador=") must not match CLOUD_PATTERN
  * Contains no user input, so it is safe to put directly in a query.
  */
 function sql_exclude_bots(): string
 {
-    return "LOWER(SUBSTRING_INDEX(COALESCE(geo, ''), 'navegador=', -1)) NOT REGEXP '" . BOT_PATTERN . "'";
+    return "LOWER(SUBSTRING_INDEX(COALESCE(geo, ''), 'navegador=', -1)) NOT REGEXP '" . BOT_PATTERN . "'"
+        . " AND LOWER(SUBSTRING_INDEX(COALESCE(geo, ''), 'navegador=', 1))"
+        . " NOT REGEXP '(^|;)(isp|org)=[^;]*(" . CLOUD_PATTERN . ")'";
 }
 
 // Country name from parsed geo data, or "Unknown" when the lookup failed.

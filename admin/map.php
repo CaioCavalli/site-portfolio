@@ -45,7 +45,7 @@ $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
 
 // ---------- Group visits by city (read-only) ----------
 
-$places = [];        // key => [city, country, lat, lon, count]
+$places = [];        // key => [city, country, lat, lon, count, visitor, cloud, bot]
 $total = 0;
 $withoutLocation = 0;
 $loadError = false;
@@ -76,9 +76,13 @@ try {
                 'lat'     => round((float)$lat, 4),
                 'lon'     => round((float)$lon, 4),
                 'count'   => 0,
+                'visitor' => 0,   // counts per visit_type(), used for the circle colours
+                'cloud'   => 0,
+                'bot'     => 0,
             ];
         }
         $places[$key]['count']++;
+        $places[$key][visit_type($geo)]++;
     }
 } catch (Throwable $ex) {
     error_log('admin/map.php query failed: ' . $ex->getMessage());
@@ -275,6 +279,15 @@ $topCities = array_slice($places, 0, 10);
             }
 
             const places = <?= js(array_values($places)) ?>;
+            const showBots = <?= js($showBots) ?>;
+
+            // Same colours as the badges on the Visits page.
+            // Drawn in this order, so real visitors end up on top.
+            const types = [
+                { key: 'bot',     label: 'Bot',     color: '#6c757d' },
+                { key: 'cloud',   label: 'Cloud',   color: '#ffc107' },
+                { key: 'visitor', label: 'Visitor', color: '#00b5e9' }
+            ];
 
             const map = L.map(container, {
                 center: [20, 0],
@@ -290,32 +303,71 @@ $topCities = array_slice($places, 0, 10);
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
             }).addTo(map);
 
-            const bounds = [];
-            places.forEach((place) => {
-                const radius = Math.min(30, 6 + Math.sqrt(place.count) * 3);
-                const marker = L.circleMarker([place.lat, place.lon], {
-                    radius: radius,
-                    fillColor: '#00b5e9',
-                    color: '#fff',
-                    weight: 2,
-                    opacity: 1,
-                    fillOpacity: 0.7
-                }).addTo(map);
+            const plural = (n) => n + (n === 1 ? ' visit' : ' visits');
 
-                // Built as plain text (no HTML) because the names come from an external API.
+            // Popup built as plain text (no HTML) because the names come from an external API.
+            function buildPopup(place) {
                 const popup = document.createElement('div');
                 const title = document.createElement('strong');
                 title.textContent = place.city + ', ' + place.country;
                 popup.appendChild(title);
                 popup.appendChild(document.createElement('br'));
-                popup.appendChild(document.createTextNode(place.count + (place.count === 1 ? ' visit' : ' visits')));
-                marker.bindPopup(popup);
+                popup.appendChild(document.createTextNode(plural(place.count)));
 
-                marker.on('mouseover', function () { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
-                marker.on('mouseout', function () { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
+                // With bots shown, add one line per type that has visits.
+                if (showBots) {
+                    types.slice().reverse().forEach((type) => {
+                        if (place[type.key] > 0) {
+                            popup.appendChild(document.createElement('br'));
+                            popup.appendChild(document.createTextNode(type.label + ': ' + place[type.key]));
+                        }
+                    });
+                }
+                return popup;
+            }
 
-                bounds.push([place.lat, place.lon]);
+            const bounds = [];
+            types.forEach((type) => {
+                places.forEach((place) => {
+                    const count = place[type.key];
+                    if (!count) {
+                        return;
+                    }
+                    const marker = L.circleMarker([place.lat, place.lon], {
+                        radius: Math.min(30, 6 + Math.sqrt(count) * 3),
+                        fillColor: type.color,
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.7
+                    }).addTo(map);
+
+                    marker.bindPopup(buildPopup(place));
+                    marker.on('mouseover', function () { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
+                    marker.on('mouseout', function () { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
+
+                    bounds.push([place.lat, place.lon]);
+                });
             });
+
+            // Colour legend, only useful when bots are shown.
+            if (showBots) {
+                const legend = L.control({ position: 'bottomleft' });
+                legend.onAdd = function () {
+                    const box = L.DomUtil.create('div');
+                    box.style.cssText = 'background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; font-size: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+                    types.slice().reverse().forEach((type) => {
+                        const row = document.createElement('div');
+                        const dot = document.createElement('span');
+                        dot.style.cssText = 'display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: ' + type.color + ';';
+                        row.appendChild(dot);
+                        row.appendChild(document.createTextNode(type.label));
+                        box.appendChild(row);
+                    });
+                    return box;
+                };
+                legend.addTo(map);
+            }
 
             // Zoom to show every circle (but not too close when there is only one city).
             if (bounds.length > 0) {

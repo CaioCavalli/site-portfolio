@@ -75,7 +75,7 @@ try {
             'city'    => $success && ($geo['city'] ?? '') !== '' ? $geo['city'] : '—',
             'agent'   => summarize_agent($geo['navegador']),
             'ip'      => (string)($row['ip'] ?? ''),
-            'bot'     => is_bot($geo['navegador']),
+            'type'    => visit_type($geo),
         ];
     }
 } catch (Throwable $ex) {
@@ -215,8 +215,10 @@ function page_url(int $page, string $period, bool $showBots): string
                                                                 <td><?= e($visit['agent']) ?></td>
                                                                 <td class="text-nowrap"><?= e($visit['ip']) ?></td>
                                                                 <td>
-                                                                    <?php if ($visit['bot']): ?>
+                                                                    <?php if ($visit['type'] === 'bot'): ?>
                                                                         <span class="badge bg-secondary">Bot</span>
+                                                                    <?php elseif ($visit['type'] === 'cloud'): ?>
+                                                                        <span class="badge bg-warning text-dark" title="Comes from a cloud / hosting provider">Cloud</span>
                                                                     <?php else: ?>
                                                                         <span class="badge bg-success">Visitor</span>
                                                                     <?php endif; ?>
