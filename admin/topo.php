@@ -22,8 +22,8 @@
                                 <i class="fas fa-tachometer-alt"></i>Dashboard</a>
                         </li>
                         <li>
-                            <a href="table.php">
-                                <i class="fas fa-table"></i>Tables</a>
+                            <a href="visits.php">
+                                <i class="fa-solid fa-eye"></i>Visits</a>
                         </li>
                         <li>
                             <a href="message.php">
@@ -62,8 +62,8 @@
                                 <i class="fas fa-tachometer-alt"></i>Dashboard</a>
                         </li>
                         <li>
-                            <a href="table.php">
-                                <i class="fas fa-table"></i>Tables</a>
+                            <a href="visits.php">
+                                <i class="fa-solid fa-eye"></i>Visits</a>
                         </li>
                         <li>
                             <a href="message.php">
