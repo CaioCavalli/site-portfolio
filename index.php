@@ -220,13 +220,13 @@ unset($_SESSION['contact_sent_name']);
         </div>
 
         <ul class="main-menu">
-          <li class="active">
+          <!-- <li>
             <a href="#home" class="nav-anim">
               <span class="menu-icon lnr lnr-home"></span>
               <span class="link-text">Home</span>
             </a>
-          </li>
-          <li>
+          </li> -->
+          <li class="active">
             <a href="#about-me" class="nav-anim">
               <span class="menu-icon lnr lnr-user"></span>
               <span class="link-text">About Me</span>
@@ -296,7 +296,7 @@ unset($_SESSION['contact_sent_name']);
       <div class="content-area">
         <div class="animated-sections">
 
-          <!-- Home Subpage -->
+          <!-- Home Subpage (hidden for now: remove the comment markers to restore it)
           <section data-id="home" class="animated-section start-page">
             <div class="section-content vcentered">
 
@@ -333,7 +333,7 @@ unset($_SESSION['contact_sent_name']);
 
             </div>
           </section>
-          <!-- End of Home Subpage -->
+          End of Home Subpage -->
 
           <?php
 
