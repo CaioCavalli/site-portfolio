@@ -224,9 +224,9 @@ unset($_SESSION['contact_sent_name']);
     <style>
       ::selection {
         background-color: #9b5750;
-        /* Cor de fundo */
+        /* Background color */
         color: #ffffff;
-        /* Cor do texto */
+        /* Text color */
       }
 
       .contact-form .alert-danger {
@@ -311,7 +311,7 @@ unset($_SESSION['contact_sent_name']);
             <li>
               <a href="https://wa.me/393513985208"
                 target="_blank" rel="noopener"
-                aria-label="Abrir WhatsApp para +39 351 398 5208">
+                aria-label="Chat on WhatsApp with +39 351 398 5208">
                 <i class="fab fa-whatsapp" aria-hidden="true"></i>
               </a>
             </li>
@@ -442,7 +442,7 @@ unset($_SESSION['contact_sent_name']);
 
                       <li>
                         <span class="title"><?= $title_email_about; ?></span>
-                        <span class="value"><a href=""><?= $email_about; ?></a></span>
+                        <span class="value"><a href="mailto:<?= htmlspecialchars(trim(strip_tags((string)$email_about)), ENT_QUOTES, 'UTF-8') ?>"><?= $email_about; ?></a></span>
                       </li>
                     </ul>
                   </div>
@@ -990,23 +990,23 @@ unset($_SESSION['contact_sent_name']);
                 <!-- Contact Info -->
                 <div class="col-xs-12 col-sm-4">
 
-                  <!-- MAPA -->
+                  <!-- MAP -->
                   <div class="lm-info-block gray-default lm-as-link">
                     <a href="https://maps.app.goo.gl/qyFB5NpYEU2JuKVFA"
                       target="_blank" rel="noopener"
                       class="lm-stretched-link"
-                      aria-label="Abrir Google Maps: Milan"></a>
+                      aria-label="Open Milan in Google Maps"></a>
                     <i class="lnr lnr-map-marker" aria-hidden="true"></i>
                     <h4>Milan</h4>
                     <span class="lm-info-block-value"></span>
                     <span class="lm-info-block-text"></span>
                   </div>
 
-                  <!-- TELEFONE -->
+                  <!-- PHONE -->
                   <div class="lm-info-block gray-default lm-as-link">
                     <a href="tel:+393513985208"
                       class="lm-stretched-link"
-                      aria-label="Ligar para +39 351 398 5208"></a>
+                      aria-label="Call +39 351 398 5208"></a>
                     <i class="lnr lnr-phone-handset" aria-hidden="true"></i>
                     <h4>+39 351 398 5208</h4>
                     <span class="lm-info-block-value"></span>
@@ -1017,9 +1017,9 @@ unset($_SESSION['contact_sent_name']);
                   <div class="lm-info-block gray-default lm-as-link">
                     <a href="mailto:caiotoliocavalli@gmail.com"
                       class="lm-stretched-link"
-                      aria-label="Enviar e-mail para caiotoliocavalli@gmail.com"></a>
+                      aria-label="Send an e-mail to caiotoliocavalli@gmail.com"></a>
                     <i class="lnr lnr-envelope" aria-hidden="true"></i>
-                    <h4>[caiotoliocavalli@gmail.com]</h4>
+                    <h4>caiotoliocavalli@gmail.com</h4>
                     <span class="lm-info-block-value"></span>
                     <span class="lm-info-block-text"></span>
                   </div>
