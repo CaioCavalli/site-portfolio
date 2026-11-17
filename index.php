@@ -509,9 +509,9 @@ unset($_SESSION['contact_sent_name']);
 
           $language_resume = 1;
 
-          $sql_resume_title = "SELECT * 
-                  FROM resume 
-                  WHERE language = :language AND categoria = 'Education'
+          $sql_resume_title = "SELECT *
+                  FROM resume
+                  WHERE language = :language AND categoria = 'Experience'
                   ORDER BY data_ref DESC;";
 
           $stmt = $conn->prepare($sql_resume_title);
@@ -543,7 +543,7 @@ unset($_SESSION['contact_sent_name']);
 
                   $sql_resume = "SELECT * 
                           FROM resume 
-                          WHERE language = :language AND categoria = 'Education'
+                          WHERE language = :language AND categoria = 'Experience'
                           ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume);
@@ -575,9 +575,9 @@ unset($_SESSION['contact_sent_name']);
                   <div class="white-space-50"></div>
 
                   <?php
-                  $sql_resume_title = "SELECT * 
-                  FROM resume 
-                  WHERE language = :language AND categoria = 'Experience'
+                  $sql_resume_title = "SELECT *
+                  FROM resume
+                  WHERE language = :language AND categoria = 'Education'
                   ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume_title);
@@ -595,9 +595,9 @@ unset($_SESSION['contact_sent_name']);
 
                   <?php
 
-                  $sql_resume = "SELECT * 
-                      FROM resume 
-                      WHERE language = :language AND categoria = 'Experience'
+                  $sql_resume = "SELECT *
+                      FROM resume
+                      WHERE language = :language AND categoria = 'Education'
                       ORDER BY data_ref DESC;";
 
                   $stmt = $conn->prepare($sql_resume);
