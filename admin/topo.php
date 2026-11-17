@@ -30,6 +30,14 @@
                                 <i class="fas fa-envelope"></i>Messages</a>
                         </li>
                         <li>
+                            <a href="about.php">
+                                <i class="fa-solid fa-user"></i>About</a>
+                        </li>
+                        <li>
+                            <a href="resume.php">
+                                <i class="fa-solid fa-file-lines"></i>Resume</a>
+                        </li>
+                        <li>
                             <a href="map.php">
                                 <i class="fas fa-map-marker-alt"></i>Maps</a>
                         </li>
@@ -72,6 +80,14 @@
                         <li>
                             <a href="message.php">
                                 <i class="fas fa-envelope"></i>Messages</a>
+                        </li>
+                        <li>
+                            <a href="about.php">
+                                <i class="fa-solid fa-user"></i>About</a>
+                        </li>
+                        <li>
+                            <a href="resume.php">
+                                <i class="fa-solid fa-file-lines"></i>Resume</a>
                         </li>
                         <li>
                             <a href="map.php">
