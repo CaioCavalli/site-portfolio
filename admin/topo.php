@@ -41,18 +41,6 @@
                             <a href="map.php">
                                 <i class="fas fa-map-marker-alt"></i>Maps</a>
                         </li>
-                        <li class="has-sub">
-                            <a class="js-arrow" href="#">
-                                <i class="fas fa-copy"></i>Pages</a>
-                            <ul class="navbar-mobile-sub__list list-unstyled js-sub-list">
-                                <li>
-                                    <a href="index.php">Login</a>
-                                </li>
-                                <li>
-                                    <a href="forget-pass.php">Forget Password</a>
-                                </li>
-                            </ul>
-                        </li>
                     </ul>
                 </div>
             </nav>
@@ -92,18 +80,6 @@
                         <li>
                             <a href="map.php">
                                 <i class="fas fa-map-marker-alt"></i>Maps</a>
-                        </li>
-                        <li class="has-sub">
-                            <a class="js-arrow" href="#">
-                                <i class="fas fa-copy"></i>Pages</a>
-                            <ul class="list-unstyled navbar__sub-list js-sub-list">
-                                <li>
-                                    <a href="index.php">Login</a>
-                                </li>
-                                <li>
-                                    <a href="forget-pass.php">Forget Password</a>
-                                </li>
-                            </ul>
                         </li>
                     </ul>
                 </nav>
