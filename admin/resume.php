@@ -14,7 +14,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 const RESUME_LANGUAGE = '1';
 
 // Allowed values for the `categoria` column, in display order.
-const CATEGORIES = ['Education', 'Experience'];
+const CATEGORIES = ['Experience', 'Education'];
 
 const PAGE_TITLE_MAX = 200;
 
@@ -42,13 +42,13 @@ function redirect_to(string $query): void
     exit;
 }
 
-// Same rule as index.php: the title of the most recent Education item.
+// Same rule as index.php: the title of the most recent Experience item.
 function load_page_title(PDO $conn): string
 {
     $stmt = $conn->prepare(
         "SELECT main_title_1 FROM resume
          WHERE language = :language
-         ORDER BY (categoria = 'Education') DESC, data_ref DESC
+         ORDER BY (categoria = 'Experience') DESC, data_ref DESC
          LIMIT 1"
     );
     $stmt->execute([':language' => RESUME_LANGUAGE]);
