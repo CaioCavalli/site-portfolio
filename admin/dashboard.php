@@ -6,6 +6,44 @@ require_login();
 require_once __DIR__ . '/../includes/dbconn.php';
 require_once __DIR__ . '/visit-helpers.php';
 
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+if (empty($_SESSION['csrf_admin'])) {
+    $_SESSION['csrf_admin'] = bin2hex(random_bytes(32));
+}
+
+// ---------- "Don't count my visits" on this device ----------
+// index.php skips the `log` insert when this cookie is "1".
+const SKIP_VISIT_COOKIE = 'skip_visit_log';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'toggle_count') {
+    if (!hash_equals($_SESSION['csrf_admin'], (string)($_POST['csrf'] ?? ''))) {
+        header('Location: dashboard.php?status=csrf');
+        exit;
+    }
+
+    // Cookie path = the site root (one level above /admin/), so index.php can read it.
+    // Locally "/caiosite/portfolio/", in production "/".
+    $sitePath = rtrim(str_replace('\\', '/', dirname(dirname($_SERVER['SCRIPT_NAME']))), '/') . '/';
+    $skip = ($_POST['skip'] ?? '') === '1';
+
+    setcookie(SKIP_VISIT_COOKIE, $skip ? '1' : '', [
+        'expires'  => $skip ? time() + 365 * 24 * 60 * 60 : time() - 3600,
+        'path'     => $sitePath,
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+
+    // Post/Redirect/Get: avoids re-submitting on page refresh.
+    header('Location: dashboard.php?status=' . ($skip ? 'skip-on' : 'skip-off'));
+    exit;
+}
+
+$skipThisDevice = ($_COOKIE[SKIP_VISIT_COOKIE] ?? '') === '1';
+$status = (string)($_GET['status'] ?? '');
+
 // ---------- Helpers ----------
 
 function e(?string $value): string
@@ -198,6 +236,26 @@ $cards = [
                         </div>
                     </div>
 
+                    <?php if ($status === 'skip-on'): ?>
+                        <div class="row m-t-25">
+                            <div class="col-md-12">
+                                <div class="alert alert-success">Done. Your visits on this device will no longer be counted.</div>
+                            </div>
+                        </div>
+                    <?php elseif ($status === 'skip-off'): ?>
+                        <div class="row m-t-25">
+                            <div class="col-md-12">
+                                <div class="alert alert-success">Done. Your visits on this device will be counted again.</div>
+                            </div>
+                        </div>
+                    <?php elseif ($status === 'csrf'): ?>
+                        <div class="row m-t-25">
+                            <div class="col-md-12">
+                                <div class="alert alert-warning">Your session expired. Please try again.</div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
                     <?php if ($loadError): ?>
                         <div class="row m-t-25">
                             <div class="col-md-12">
@@ -316,6 +374,45 @@ $cards = [
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- This device: count my own visits or not -->
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <form method="post" action="dashboard.php">
+                                <input type="hidden" name="csrf" value="<?= e($_SESSION['csrf_admin']) ?>">
+                                <input type="hidden" name="action" value="toggle_count">
+                                <input type="hidden" name="skip" value="<?= $skipThisDevice ? '0' : '1' ?>">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <strong>This device</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <?php if ($skipThisDevice): ?>
+                                            <span class="badge bg-success">Not counted</span>
+                                            Your visits to the site from this browser are <strong>not</strong> recorded.
+                                        <?php else: ?>
+                                            <span class="badge bg-warning text-dark">Counted</span>
+                                            Your visits to the site from this browser are recorded like any other visitor.
+                                        <?php endif; ?>
+                                        <small class="form-text text-muted d-block mt-2">
+                                            Applies only to this browser on this device. Clearing cookies, private windows or another browser will count visits again.
+                                        </small>
+                                    </div>
+                                    <div class="card-footer">
+                                        <?php if ($skipThisDevice): ?>
+                                            <button type="submit" class="btn btn-secondary btn-sm">
+                                                <i class="fa-solid fa-eye"></i> Count my visits again
+                                            </button>
+                                        <?php else: ?>
+                                            <button type="submit" class="btn btn-primary btn-sm">
+                                                <i class="fa-solid fa-eye-slash"></i> Don't count my visits
+                                            </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </form>
                         </div>
                     </div>
 

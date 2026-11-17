@@ -115,10 +115,14 @@ unset($_SESSION['contact_sent_name']);
 
   <?php
 
-  $sql_log = "INSERT INTO log (ip, geo, dia) 
-            VALUES (:ip, :geo, :dia)";
-  $stmt = $conn->prepare($sql_log);
-  $stmt->execute([':ip' => $ip, ':geo' => $geo, ':dia' => $now]);
+  // Log the visit, unless this device was marked "don't count my visits"
+  // in the admin dashboard (cookie set by admin/dashboard.php).
+  if (($_COOKIE['skip_visit_log'] ?? '') !== '1') {
+    $sql_log = "INSERT INTO log (ip, geo, dia)
+              VALUES (:ip, :geo, :dia)";
+    $stmt = $conn->prepare($sql_log);
+    $stmt->execute([':ip' => $ip, ':geo' => $geo, ':dia' => $now]);
+  }
 
 
   $id_header = 1;
