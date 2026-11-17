@@ -275,7 +275,7 @@ unset($_SESSION['contact_sent_name']);
           <a href="download/CV%20-%20Data%20Analyst%20-%20Caio%20Cavalli.pdf" class="btn btn-primary" download="CV-Caio-Cavalli.pdf">Download CV</a>
         </div>
 
-        <div class="copyrights">© 2025 All rights reserved.</div>
+        <div class="copyrights">© 2026 All rights reserved.</div>
       </header>
 
       <!-- Mobile Navigation -->
