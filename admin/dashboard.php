@@ -4,41 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
 require_once __DIR__ . '/../includes/dbconn.php';
+require_once __DIR__ . '/visit-helpers.php';
 
 // ---------- Helpers ----------
-
-/**
- * Parse the `geo` column ("key=value;key=value;...;navegador=<user agent>").
- * The user agent is always the last key and may itself contain ";",
- * so everything after "navegador=" is taken as-is.
- */
-function parse_geo(string $geo): array
-{
-    $agent = '';
-    $pos = strpos($geo, 'navegador=');
-    if ($pos !== false) {
-        $agent = substr($geo, $pos + strlen('navegador='));
-        $geo = substr($geo, 0, $pos);
-    }
-
-    $data = [];
-    foreach (explode(';', $geo) as $pair) {
-        if (strpos($pair, '=') === false) {
-            continue;
-        }
-        [$key, $value] = explode('=', $pair, 2);
-        $data[trim($key)] = trim($value);
-    }
-    $data['navegador'] = trim($agent);
-
-    return $data;
-}
-
-// Simple bot check based on the user agent. Catches the common crawlers, not all of them.
-function is_bot(string $userAgent): bool
-{
-    return (bool)preg_match('/bot|crawl|spider|slurp/i', $userAgent);
-}
 
 function e(?string $value): string
 {
@@ -95,9 +63,7 @@ try {
         $uniqueByDay[$day][$ip] = true;
         $uniqueIps[$ip] = true;
 
-        $country = ($geo['status'] ?? '') === 'success' && ($geo['country'] ?? '') !== ''
-            ? $geo['country']
-            : 'Unknown';
+        $country = geo_country($geo);
         $countries[$country] = ($countries[$country] ?? 0) + 1;
     }
 } catch (Throwable $ex) {
