@@ -3,6 +3,170 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+require_once __DIR__ . '/../includes/dbconn.php';
+
+// ---------- Helpers ----------
+
+/**
+ * Parse the `geo` column ("key=value;key=value;...;navegador=<user agent>").
+ * The user agent is always the last key and may itself contain ";",
+ * so everything after "navegador=" is taken as-is.
+ */
+function parse_geo(string $geo): array
+{
+    $agent = '';
+    $pos = strpos($geo, 'navegador=');
+    if ($pos !== false) {
+        $agent = substr($geo, $pos + strlen('navegador='));
+        $geo = substr($geo, 0, $pos);
+    }
+
+    $data = [];
+    foreach (explode(';', $geo) as $pair) {
+        if (strpos($pair, '=') === false) {
+            continue;
+        }
+        [$key, $value] = explode('=', $pair, 2);
+        $data[trim($key)] = trim($value);
+    }
+    $data['navegador'] = trim($agent);
+
+    return $data;
+}
+
+// Simple bot check based on the user agent. Catches the common crawlers, not all of them.
+function is_bot(string $userAgent): bool
+{
+    return (bool)preg_match('/bot|crawl|spider|slurp/i', $userAgent);
+}
+
+function e(?string $value): string
+{
+    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+// Safe JSON for embedding inside a <script> block.
+function js(mixed $value): string
+{
+    return json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+}
+
+// ---------- Date range: the last 30 days, including today ----------
+
+const DAYS_LONG = 30;   // main chart, unique visitors, messages, countries
+const DAYS_SHORT = 14;  // small charts inside the cards
+
+$today = date('Y-m-d');
+$days = [];
+for ($i = DAYS_LONG - 1; $i >= 0; $i--) {
+    $days[] = date('Y-m-d', strtotime("-$i days"));
+}
+$since = $days[0] . ' 00:00:00';
+
+$visitsByDay  = array_fill_keys($days, 0);
+$uniqueByDay  = array_fill_keys($days, []);
+$messagesByDay = array_fill_keys($days, 0);
+$uniqueIps = [];
+$countries = [];
+$botsIgnored = 0;
+$messages30 = 0;
+$latestMessages = [];
+$loadError = false;
+
+// ---------- Visits (table `log`), read-only ----------
+try {
+    $stmt = $conn->prepare('SELECT ip, geo, dia FROM log WHERE dia >= :since');
+    $stmt->execute([':since' => $since]);
+
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $day = substr((string)$row['dia'], 0, 10);
+        if (!isset($visitsByDay[$day])) {
+            continue;
+        }
+
+        $geo = parse_geo((string)($row['geo'] ?? ''));
+        if (is_bot($geo['navegador'])) {
+            $botsIgnored++;
+            continue;
+        }
+
+        $ip = (string)($row['ip'] ?? '');
+        $visitsByDay[$day]++;
+        $uniqueByDay[$day][$ip] = true;
+        $uniqueIps[$ip] = true;
+
+        $country = ($geo['status'] ?? '') === 'success' && ($geo['country'] ?? '') !== ''
+            ? $geo['country']
+            : 'Unknown';
+        $countries[$country] = ($countries[$country] ?? 0) + 1;
+    }
+} catch (Throwable $ex) {
+    error_log('admin/dashboard.php visits query failed: ' . $ex->getMessage());
+    $loadError = true;
+}
+
+// ---------- Messages (table `form`), read-only ----------
+try {
+    $stmt = $conn->prepare('SELECT dia FROM form WHERE dia >= :since');
+    $stmt->execute([':since' => $since]);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $day = substr((string)$row['dia'], 0, 10);
+        if (isset($messagesByDay[$day])) {
+            $messagesByDay[$day]++;
+            $messages30++;
+        }
+    }
+
+    $stmt = $conn->query('SELECT name, subject, dia FROM form ORDER BY id DESC LIMIT 5');
+    $latestMessages = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+} catch (Throwable $ex) {
+    error_log('admin/dashboard.php messages query failed: ' . $ex->getMessage());
+    $loadError = true;
+}
+
+// ---------- Numbers for the page ----------
+$uniqueCountByDay = array_map('count', $uniqueByDay);
+
+$visitsToday = $visitsByDay[$today] ?? 0;
+$visits7 = array_sum(array_slice($visitsByDay, -7));
+$unique30 = count($uniqueIps);
+
+arsort($countries);
+$topCountries = array_slice($countries, 0, 8, true);
+
+// Doughnut: top 5 countries + "Others"
+$doughnut = array_slice($countries, 0, 5, true);
+$others = array_sum(array_slice($countries, 5));
+if ($others > 0) {
+    $doughnut['Others'] = $others;
+}
+
+// Chart labels like "17 Nov"
+$labelsLong = array_map(fn($d) => date('j M', strtotime($d)), $days);
+$labelsShort = array_slice($labelsLong, -DAYS_SHORT);
+
+$cards = [
+    [
+        'id' => 'kpiChart1', 'color' => 'c1', 'icon' => 'zmdi-eye',
+        'value' => $visitsToday, 'label' => 'visits today',
+        'series' => array_values(array_slice($visitsByDay, -DAYS_SHORT)),
+    ],
+    [
+        'id' => 'kpiChart2', 'color' => 'c2', 'icon' => 'zmdi-calendar-note',
+        'value' => $visits7, 'label' => 'visits (7 days)',
+        'series' => array_values(array_slice($visitsByDay, -DAYS_SHORT)),
+    ],
+    [
+        'id' => 'kpiChart3', 'color' => 'c3', 'icon' => 'zmdi-account-o',
+        'value' => $unique30, 'label' => 'unique visitors (30 days)',
+        'series' => array_values(array_slice($uniqueCountByDay, -DAYS_SHORT)),
+    ],
+    [
+        'id' => 'kpiChart4', 'color' => 'c4', 'icon' => 'zmdi-email',
+        'value' => $messages30, 'label' => 'messages (30 days)',
+        'series' => array_values(array_slice($messagesByDay, -DAYS_SHORT)),
+    ],
+];
 
 ?>
 
@@ -14,12 +178,10 @@ require_login();
     <!-- Required meta tags-->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="au theme template">
     <meta name="author" content="Caio Cavalli">
-    <meta name="keywords" content="au theme template">
 
     <!-- Title Page-->
-    <title>Admin</title>
+    <title>Dashboard</title>
 
     <!-- Fontfaces CSS-->
     <link href="css/font-face.css" rel="stylesheet" media="all">
@@ -56,248 +218,126 @@ require_login();
                         <div class="col-md-12">
                             <div class="overview-wrap">
                                 <h2 class="title-1">overview</h2>
-                                <button class="au-btn au-btn-icon au-btn--blue">
-                                    <i class="zmdi zmdi-plus"></i>add item</button>
                             </div>
+                            <small class="form-text text-muted">
+                                Bots ignored in the last <?= DAYS_LONG ?> days: <?= (int)$botsIgnored ?>.
+                            </small>
                         </div>
                     </div>
+
+                    <?php if ($loadError): ?>
+                        <div class="row m-t-25">
+                            <div class="col-md-12">
+                                <div class="alert alert-danger">Some data could not be loaded. The numbers below may be incomplete.</div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- KPI cards -->
                     <div class="row m-t-25">
-                        <div class="col-sm-6 col-lg-3">
-                            <div class="overview-item overview-item--c1">
-                                <div class="overview__inner">
-                                    <div class="overview-box clearfix">
-                                        <div class="icon">
-                                            <i class="zmdi zmdi-account-o"></i>
+                        <?php foreach ($cards as $card): ?>
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="overview-item overview-item--<?= e($card['color']) ?>">
+                                    <div class="overview__inner">
+                                        <div class="overview-box clearfix">
+                                            <div class="icon">
+                                                <i class="zmdi <?= e($card['icon']) ?>"></i>
+                                            </div>
+                                            <div class="text">
+                                                <h2><?= number_format((int)$card['value']) ?></h2>
+                                                <span><?= e($card['label']) ?></span>
+                                            </div>
                                         </div>
-                                        <div class="text">
-                                            <h2>10368</h2>
-                                            <span>members online</span>
+                                        <div class="overview-chart">
+                                            <canvas id="<?= e($card['id']) ?>"></canvas>
                                         </div>
-                                    </div>
-                                    <div class="overview-chart">
-                                        <canvas id="widgetChart1"></canvas>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div class="col-sm-6 col-lg-3">
-                            <div class="overview-item overview-item--c2">
-                                <div class="overview__inner">
-                                    <div class="overview-box clearfix">
-                                        <div class="icon">
-                                            <i class="zmdi zmdi-shopping-cart"></i>
-                                        </div>
-                                        <div class="text">
-                                            <h2>388,688</h2>
-                                            <span>items solid</span>
-                                        </div>
-                                    </div>
-                                    <div class="overview-chart">
-                                        <canvas id="widgetChart2"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-lg-3">
-                            <div class="overview-item overview-item--c3">
-                                <div class="overview__inner">
-                                    <div class="overview-box clearfix">
-                                        <div class="icon">
-                                            <i class="zmdi zmdi-calendar-note"></i>
-                                        </div>
-                                        <div class="text">
-                                            <h2>1,086</h2>
-                                            <span>this week</span>
-                                        </div>
-                                    </div>
-                                    <div class="overview-chart">
-                                        <canvas id="widgetChart3"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-6 col-lg-3">
-                            <div class="overview-item overview-item--c4">
-                                <div class="overview__inner">
-                                    <div class="overview-box clearfix">
-                                        <div class="icon">
-                                            <i class="zmdi zmdi-money"></i>
-                                        </div>
-                                        <div class="text">
-                                            <h2>$1,060,386</h2>
-                                            <span>total earnings</span>
-                                        </div>
-                                    </div>
-                                    <div class="overview-chart">
-                                        <canvas id="widgetChart4"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
+
+                    <!-- Charts -->
                     <div class="row">
-                        <div class="col-lg-6">
+                        <div class="col-lg-8">
                             <div class="au-card recent-report">
                                 <div class="au-card-inner">
-                                    <h3 class="title-2">recent reports</h3>
-                                    <div class="chart-info">
-                                        <div class="chart-info__right">
-                                            <div class="chart-statis">
-                                                <span class="index incre">
-                                                    <i class="zmdi zmdi-long-arrow-up"></i>25%</span>
-                                                <span class="label">products</span>
-                                            </div>
-                                            <div class="chart-statis me-0">
-                                                <span class="index decre">
-                                                    <i class="zmdi zmdi-long-arrow-down"></i>10%</span>
-                                                <span class="label">services</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="recent-report__chart">
-                                        <canvas id="recent-rep-chart"></canvas>
+                                    <h3 class="title-2">visits per day (last <?= DAYS_LONG ?> days)</h3>
+                                    <div class="recent-report__chart" style="position: relative; height: 250px;">
+                                        <canvas id="visitsChart"></canvas>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-lg-6">
+                        <div class="col-lg-4">
                             <div class="au-card chart-percent-card">
                                 <div class="au-card-inner">
-                                    <h3 class="title-2 tm-b-5">Revenue Distribution</h3>
-                                    <div class="row no-gutters">
-                                        <div class="col-xl-12">
-                                            <div class="percent-chart">
-                                                <canvas id="percent-chart"></canvas>
-                                            </div>
+                                    <h3 class="title-2 tm-b-5">visits by country</h3>
+                                    <?php if (!$doughnut): ?>
+                                        <p class="text-muted m-t-25">No visits in the last <?= DAYS_LONG ?> days.</p>
+                                    <?php else: ?>
+                                        <div style="position: relative; height: 280px;">
+                                            <canvas id="countriesChart"></canvas>
                                         </div>
-                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Tables -->
                     <div class="row">
-                        <div class="col-lg-9">
-                            <h2 class="title-1 m-b-25">Earnings By Items</h2>
-                            <div class="table-responsive table--no-card m-b-40">
+                        <div class="col-lg-8">
+                            <h2 class="title-1 m-b-25">Latest messages</h2>
+                            <div class="table-responsive table--no-card m-b-25">
                                 <table class="table table-borderless table-striped table-earning">
                                     <thead>
                                         <tr>
                                             <th>date</th>
-                                            <th>order ID</th>
                                             <th>name</th>
-                                            <th class="text-end">price</th>
-                                            <th class="text-end">quantity</th>
-                                            <th class="text-end">total</th>
+                                            <th>subject</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <tr>
-                                            <td>2025-01-15 14:32</td>
-                                            <td>100398</td>
-                                            <td>iPhone 17 128GB Titanium</td>
-                                            <td class="text-end">$1299.00</td>
-                                            <td class="text-end">1</td>
-                                            <td class="text-end">$999.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-14 10:18</td>
-                                            <td>100397</td>
-                                            <td>Samsung Galaxy S25 Ultra</td>
-                                            <td class="text-end">$1199.00</td>
-                                            <td class="text-end">1</td>
-                                            <td class="text-end">$756.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-13 16:45</td>
-                                            <td>100396</td>
-                                            <td>PS5 Pro DualSense Controller</td>
-                                            <td class="text-end">$79.00</td>
-                                            <td class="text-end">2</td>
-                                            <td class="text-end">$44.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-12 09:23</td>
-                                            <td>100395</td>
-                                            <td>iPhone 17 Pro Max 1TB Space Black</td>
-                                            <td class="text-end">$1699.00</td>
-                                            <td class="text-end">1</td>
-                                            <td class="text-end">$1199.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-11 13:17</td>
-                                            <td>100393</td>
-                                            <td>USB-C to USB-C Thunderbolt 5 Cable</td>
-                                            <td class="text-end">$29.00</td>
-                                            <td class="text-end">3</td>
-                                            <td class="text-end">$30.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-10 11:55</td>
-                                            <td>100392</td>
-                                            <td>Apple Watch Series 11 Ultra</td>
-                                            <td class="text-end">$899.00</td>
-                                            <td class="text-end">6</td>
-                                            <td class="text-end">$1494.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-09 15:42</td>
-                                            <td>100391</td>
-                                            <td>Sony A7R VI Mirrorless Camera</td>
-                                            <td class="text-end">$3899.00</td>
-                                            <td class="text-end">1</td>
-                                            <td class="text-end">$699.00</td>
-                                        </tr>
-                                        <tr>
-                                            <td>2025-01-08 08:29</td>
-                                            <td>100393</td>
-                                            <td>USB-C to Lightning Cable 2m</td>
-                                            <td class="text-end">$19.00</td>
-                                            <td class="text-end">3</td>
-                                            <td class="text-end">$30.00</td>
-                                        </tr>
+                                        <?php if (!$latestMessages): ?>
+                                            <tr>
+                                                <td colspan="3">No messages yet.</td>
+                                            </tr>
+                                        <?php endif; ?>
+                                        <?php foreach ($latestMessages as $message): ?>
+                                            <tr>
+                                                <td class="text-nowrap"><?= e(substr((string)$message['dia'], 0, 16)) ?></td>
+                                                <td><?= e($message['name']) ?></td>
+                                                <td><?= e($message['subject']) ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
                                     </tbody>
                                 </table>
                             </div>
+                            <div class="m-b-40">
+                                <a href="message.php" class="btn btn-primary btn-sm">
+                                    <i class="fa-solid fa-envelope"></i> See all messages
+                                </a>
+                            </div>
                         </div>
-                        <div class="col-lg-3">
+                        <div class="col-lg-4">
                             <h2 class="title-1 m-b-25">Top countries</h2>
                             <div class="au-card au-card--bg-blue au-card-top-countries m-b-40">
                                 <div class="au-card-inner">
                                     <div class="table-responsive">
                                         <table class="table table-top-countries">
                                             <tbody>
-                                                <tr>
-                                                    <td>United States</td>
-                                                    <td class="text-end">$119,366.96</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Australia</td>
-                                                    <td class="text-end">$70,261.65</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>United Kingdom</td>
-                                                    <td class="text-end">$46,399.22</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Turkey</td>
-                                                    <td class="text-end">$35,364.90</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Germany</td>
-                                                    <td class="text-end">$20,366.96</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>France</td>
-                                                    <td class="text-end">$10,366.96</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Australia</td>
-                                                    <td class="text-end">$5,366.96</td>
-                                                </tr>
-                                                <tr>
-                                                    <td>Italy</td>
-                                                    <td class="text-end">$1639.32</td>
-                                                </tr>
+                                                <?php if (!$topCountries): ?>
+                                                    <tr>
+                                                        <td>No visits yet.</td>
+                                                    </tr>
+                                                <?php endif; ?>
+                                                <?php foreach ($topCountries as $country => $count): ?>
+                                                    <tr>
+                                                        <td><?= e((string)$country) ?></td>
+                                                        <td class="text-end"><?= number_format($count) ?></td>
+                                                    </tr>
+                                                <?php endforeach; ?>
                                             </tbody>
                                         </table>
                                     </div>
@@ -305,270 +345,7 @@ require_login();
                             </div>
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-lg-6">
-                            <div class="au-card au-card--no-shadow au-card--no-pad m-b-40">
-                                <div class="au-card-title" style="background-image:url('images/bg-title-01.jpg');">
-                                    <div class="bg-overlay bg-overlay--blue"></div>
-                                    <h3>
-                                        <i class="zmdi zmdi-account-calendar"></i>23 January, 2025
-                                    </h3>
-                                    <button class="au-btn-plus">
-                                        <i class="zmdi zmdi-plus"></i>
-                                    </button>
-                                </div>
-                                <div class="au-task js-list-load">
-                                    <div class="au-task__title">
-                                        <p>Tasks for Caio Cavalli</p>
-                                    </div>
-                                    <div class="au-task-list js-scrollbar3">
-                                        <div class="au-task__item au-task__item--danger">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                </h5>
-                                                <span class="time">10:00 AM</span>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__item au-task__item--warning">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Create new task for Dashboard</a>
-                                                </h5>
-                                                <span class="time">11:00 AM</span>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__item au-task__item--primary">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                </h5>
-                                                <span class="time">02:00 PM</span>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__item au-task__item--success">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Create new task for Dashboard</a>
-                                                </h5>
-                                                <span class="time">03:30 PM</span>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__item au-task__item--danger js-load-item">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Meeting about plan for Admin Template 2025</a>
-                                                </h5>
-                                                <span class="time">10:00 AM</span>
-                                            </div>
-                                        </div>
-                                        <div class="au-task__item au-task__item--warning js-load-item">
-                                            <div class="au-task__item-inner">
-                                                <h5 class="task">
-                                                    <a href="#">Create new task for Dashboard</a>
-                                                </h5>
-                                                <span class="time">11:00 AM</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="au-task__footer">
-                                        <button class="au-btn au-btn-load js-load-btn">load more</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-lg-6">
-                            <div class="au-card au-card--no-shadow au-card--no-pad m-b-40">
-                                <div class="au-card-title" style="background-image:url('images/bg-title-02.jpg');">
-                                    <div class="bg-overlay bg-overlay--blue"></div>
-                                    <h3>
-                                        <i class="zmdi zmdi-comment-text"></i>New Messages
-                                    </h3>
-                                    <button class="au-btn-plus">
-                                        <i class="zmdi zmdi-plus"></i>
-                                    </button>
-                                </div>
-                                <div class="au-inbox-wrap js-inbox-wrap">
-                                    <div class="au-message js-list-load">
-                                        <div class="au-message__noti">
-                                            <p>You Have
-                                                <span>2</span>
 
-                                                new messages
-                                            </p>
-                                        </div>
-                                        <div class="au-message-list">
-                                            <div class="au-message__item unread">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-02.jpg"
-                                                                    alt="John Smith">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">John Smith</h5>
-                                                            <p>Have sent a photo</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>12 Min ago</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__item unread">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap online">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-03.jpg"
-                                                                    alt="Nicholas Martinez">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">Nicholas Martinez</h5>
-                                                            <p>You are now connected on message</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>11:00 PM</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__item">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap online">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-04.jpg"
-                                                                    alt="Michelle Sims">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">Michelle Sims</h5>
-                                                            <p>Lorem ipsum dolor sit amet</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>Yesterday</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__item">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-05.jpg"
-                                                                    alt="Michelle Sims">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">Michelle Sims</h5>
-                                                            <p>Purus feugiat finibus</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>Sunday</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__item js-load-item">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap online">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-04.jpg"
-                                                                    alt="Michelle Sims">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">Michelle Sims</h5>
-                                                            <p>Lorem ipsum dolor sit amet</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>Yesterday</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="au-message__item js-load-item">
-                                                <div class="au-message__item-inner">
-                                                    <div class="au-message__item-text">
-                                                        <div class="avatar-wrap">
-                                                            <div class="avatar">
-                                                                <img src="images/icon/avatar-05.jpg"
-                                                                    alt="Michelle Sims">
-                                                            </div>
-                                                        </div>
-                                                        <div class="text">
-                                                            <h5 class="name">Michelle Sims</h5>
-                                                            <p>Purus feugiat finibus</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="au-message__item-time">
-                                                        <span>Sunday</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="au-message__footer">
-                                            <button class="au-btn au-btn-load js-load-btn">load more</button>
-                                        </div>
-                                    </div>
-                                    <div class="au-chat">
-                                        <div class="au-chat__title">
-                                            <div class="au-chat-info">
-                                                <div class="avatar-wrap online">
-                                                    <div class="avatar avatar--small">
-                                                        <img src="images/icon/avatar-02.jpg" alt="John Smith">
-                                                    </div>
-                                                </div>
-                                                <span class="nick">
-                                                    <a href="#">John Smith</a>
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div class="au-chat__content">
-                                            <div class="recei-mess-wrap">
-                                                <span class="mess-time">12 Min ago</span>
-                                                <div class="recei-mess__inner">
-                                                    <div class="avatar avatar--tiny">
-                                                        <img src="images/icon/avatar-02.jpg" alt="John Smith">
-                                                    </div>
-                                                    <div class="recei-mess-list">
-                                                        <div class="recei-mess">Lorem ipsum dolor sit amet,
-                                                            consectetur adipiscing elit non iaculis</div>
-                                                        <div class="recei-mess">Donec tempor, sapien ac viverra
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="send-mess-wrap">
-                                                <span class="mess-time">30 Sec ago</span>
-                                                <div class="send-mess__inner">
-                                                    <div class="send-mess-list">
-                                                        <div class="send-mess">Lorem ipsum dolor sit amet,
-                                                            consectetur adipiscing elit non iaculis</div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="au-chat-textfield">
-                                            <form class="au-form-icon">
-                                                <input class="au-input au-input--full au-input--h65" type="text"
-                                                    placeholder="Type a message">
-                                                <button class="au-input-icon">
-                                                    <i class="zmdi zmdi-camera"></i>
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     <div class="row">
                         <div class="col-md-12">
                             <div class="copyright">
@@ -600,6 +377,134 @@ require_login();
     <script src="js/swiper-bundle-11.2.10.min.js"></script>
     <script src="js/aos.js"></script>
     <script src="js/modern-plugins.js"></script>
+
+    <!-- Dashboard charts (real data) -->
+    <script>
+        (() => {
+            "use strict";
+            if (typeof Chart === 'undefined') {
+                return;
+            }
+
+            const cards = <?= js(array_map(fn($c) => ['id' => $c['id'], 'series' => $c['series']], $cards)) ?>;
+            const labelsShort = <?= js($labelsShort) ?>;
+            const labelsLong = <?= js($labelsLong) ?>;
+            const visits = <?= js(array_values($visitsByDay)) ?>;
+            const unique = <?= js(array_values($uniqueCountByDay)) ?>;
+            const countryLabels = <?= js(array_map('strval', array_keys($doughnut))) ?>;
+            const countryValues = <?= js(array_values($doughnut)) ?>;
+
+            // Small white line charts inside the coloured cards
+            cards.forEach((card) => {
+                const canvas = document.getElementById(card.id);
+                if (!canvas) {
+                    return;
+                }
+                new Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels: labelsShort,
+                        datasets: [{
+                            data: card.series,
+                            label: 'Total',
+                            fill: true,
+                            tension: 0.4,
+                            backgroundColor: 'rgba(255,255,255,.1)',
+                            borderColor: 'rgba(255,255,255,.55)',
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { display: false },
+                            y: { display: false, beginAtZero: true }
+                        },
+                        elements: { point: { radius: 0, hitRadius: 10, hoverRadius: 4 } }
+                    }
+                });
+            });
+
+            // Visits per day: total and unique
+            const visitsCanvas = document.getElementById('visitsChart');
+            if (visitsCanvas) {
+                new Chart(visitsCanvas, {
+                    type: 'line',
+                    data: {
+                        labels: labelsLong,
+                        datasets: [{
+                            label: 'Visits',
+                            data: visits,
+                            fill: true,
+                            tension: 0.3,
+                            backgroundColor: 'rgba(0, 181, 233, 0.4)',
+                            borderColor: '#00b5e9',
+                            pointHoverBackgroundColor: '#fff',
+                            borderWidth: 2,
+                        }, {
+                            label: 'Unique visitors',
+                            data: unique,
+                            fill: true,
+                            tension: 0.3,
+                            backgroundColor: 'rgba(250, 66, 81, 0.4)',
+                            borderColor: '#fa4251',
+                            pointHoverBackgroundColor: '#fff',
+                            borderWidth: 2,
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: { usePointStyle: true, padding: 15, font: { size: 12 } }
+                            }
+                        },
+                        scales: {
+                            x: { grid: { drawOnChartArea: false } },
+                            y: { beginAtZero: true, ticks: { precision: 0 } }
+                        },
+                        elements: { point: { radius: 0, hitRadius: 10, hoverRadius: 4, hoverBorderWidth: 3 } }
+                    }
+                });
+            }
+
+            // Visits by country (top 5 + Others)
+            const countriesCanvas = document.getElementById('countriesChart');
+            if (countriesCanvas) {
+                new Chart(countriesCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: countryLabels,
+                        datasets: [{
+                            label: 'Visits',
+                            data: countryValues,
+                            backgroundColor: ['#00b5e9', '#fa4251', '#28a745', '#ff6b35', '#6f42c1', '#adb5bd'],
+                            borderWidth: 2,
+                            hoverBorderColor: '#ffffff'
+                        }]
+                    },
+                    options: {
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        cutout: '75%',
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: { usePointStyle: true, padding: 15, font: { size: 12 } }
+                            }
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
 
 </body>
 
