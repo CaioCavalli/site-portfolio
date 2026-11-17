@@ -3,6 +3,90 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_login();
+require_once __DIR__ . '/../includes/dbconn.php';
+require_once __DIR__ . '/visit-helpers.php';
+
+function e(?string $value): string
+{
+    return htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+}
+
+// Safe JSON for embedding inside a <script> block.
+function js(mixed $value): string
+{
+    return json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+}
+
+// ---------- Filters (validated against fixed lists, same as visits.php) ----------
+
+$periods = [
+    'today' => ['Today', date('Y-m-d') . ' 00:00:00'],
+    '7'     => ['Last 7 days', date('Y-m-d', strtotime('-6 days')) . ' 00:00:00'],
+    '30'    => ['Last 30 days', date('Y-m-d', strtotime('-29 days')) . ' 00:00:00'],
+    'all'   => ['All', null],
+];
+
+$period = (string)($_GET['period'] ?? '30');
+if (!isset($periods[$period])) {
+    $period = '30';
+}
+$showBots = ($_GET['bots'] ?? '') === '1';
+
+$where = [];
+$params = [];
+if ($periods[$period][1] !== null) {
+    $where[] = 'dia >= :since';
+    $params[':since'] = $periods[$period][1];
+}
+if (!$showBots) {
+    $where[] = sql_exclude_bots();
+}
+$whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+// ---------- Group visits by city (read-only) ----------
+
+$places = [];        // key => [city, country, lat, lon, count]
+$total = 0;
+$withoutLocation = 0;
+$loadError = false;
+
+try {
+    $stmt = $conn->prepare("SELECT geo FROM log $whereSql");
+    $stmt->execute($params);
+
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $total++;
+        $geo = parse_geo((string)($row['geo'] ?? ''));
+
+        $lat = $geo['lat'] ?? '';
+        $lon = $geo['lon'] ?? '';
+        if (($geo['status'] ?? '') !== 'success' || !is_numeric($lat) || !is_numeric($lon)) {
+            $withoutLocation++;
+            continue;
+        }
+
+        $country = geo_country($geo);
+        $city = ($geo['city'] ?? '') !== '' ? $geo['city'] : 'Unknown city';
+        $key = $city . '|' . $country;
+
+        if (!isset($places[$key])) {
+            $places[$key] = [
+                'city'    => $city,
+                'country' => $country,
+                'lat'     => round((float)$lat, 4),
+                'lon'     => round((float)$lon, 4),
+                'count'   => 0,
+            ];
+        }
+        $places[$key]['count']++;
+    }
+} catch (Throwable $ex) {
+    error_log('admin/map.php query failed: ' . $ex->getMessage());
+    $loadError = true;
+}
+
+usort($places, fn($a, $b) => $b['count'] <=> $a['count']);
+$topCities = array_slice($places, 0, 10);
 
 ?>
 
@@ -13,12 +97,10 @@ require_login();
     <!-- Required meta tags-->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description" content="au theme template">
     <meta name="author" content="Caio Cavalli">
-    <meta name="keywords" content="au theme template">
 
     <!-- Title Page-->
-    <title>Maps</title>
+    <title>Visitor map</title>
 
     <!-- Fontfaces CSS-->
     <link href="css/font-face.css" rel="stylesheet" media="all">
@@ -47,116 +129,112 @@ require_login();
         include('topo.php');
         ?>
 
+        <!-- MAIN CONTENT-->
         <div class="main-content">
             <div class="section__content section__content--p30">
                 <div class="container-fluid">
                     <div class="row">
-                        <div class="col-md-12">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>map data
-                                </h3>
-                                <div class="filters">
-                                    <div class="select-wrapper">
-                                        <select class="form-select form-select-lg" name="property">
-                                            <option selected="selected">All Properties</option>
-                                            <option value="">Products</option>
-                                            <option value="">Services</option>
-                                        </select>
+                        <div class="col-lg-12">
 
+                            <!-- Filters -->
+                            <form method="get" action="map.php" class="form-horizontal">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <strong>Visitor map</strong> filters
                                     </div>
-                                    <div class="select-wrapper">
-                                        <select class="form-select form-select-lg" name="time">
-                                            <option selected="selected" value="all">All Time</option>
-                                            <option value="month">By Month</option>
-                                            <option value="day">By Day</option>
-                                        </select>
-
+                                    <div class="card-body">
+                                        <div class="row mb-3">
+                                            <div class="col col-md-3">
+                                                <label for="period" class="form-control-label">Period</label>
+                                            </div>
+                                            <div class="col-12 col-md-9">
+                                                <select id="period" name="period" class="form-select">
+                                                    <?php foreach ($periods as $key => [$label]): ?>
+                                                        <option value="<?= e((string)$key) ?>" <?= (string)$key === $period ? 'selected' : '' ?>><?= e($label) ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col col-md-3">
+                                                <label for="bots" class="form-control-label">Bots</label>
+                                            </div>
+                                            <div class="col-12 col-md-9">
+                                                <div class="form-check">
+                                                    <input type="checkbox" id="bots" name="bots" value="1" class="form-check-input" <?= $showBots ? 'checked' : '' ?>>
+                                                    <label for="bots" class="form-check-label">Show bots</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="fa-solid fa-filter"></i> Apply
+                                        </button>
+                                        <a href="map.php" class="btn btn-secondary btn-sm">
+                                            <i class="fa-solid fa-ban"></i> Reset
+                                        </a>
                                     </div>
                                 </div>
-                                <div class="map-wrap m-t-45 m-b-20">
-                                    <div id="vmap" style="height: 284px;"></div>
-                                </div>
-                            </div>
-                            <!-- END MAP DATA-->
+                            </form>
+
+                            <?php if ($loadError): ?>
+                                <div class="alert alert-danger">The visits could not be loaded.</div>
+                            <?php endif; ?>
+
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>USA
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap1"></div>
+
+                    <?php if (!$loadError): ?>
+                        <div class="row">
+                            <!-- Map -->
+                            <div class="col-lg-8">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <strong><?= number_format($total) ?></strong> <?= $total === 1 ? 'visit' : 'visits' ?>
+                                        from <strong><?= number_format(count($places)) ?></strong> <?= count($places) === 1 ? 'city' : 'cities' ?>
+                                        <span class="text-muted">· <?= e($periods[$period][0]) ?><?= $showBots ? ' · bots included' : ' · bots hidden' ?></span>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="visitorMap" style="height: 500px; border-radius: 4px;"></div>
+                                        <small class="form-text text-muted">
+                                            Locations are approximate (based on the IP address, usually the city or the internet provider).
+                                            <?php if ($withoutLocation > 0): ?>
+                                                <?= number_format($withoutLocation) ?> <?= $withoutLocation === 1 ? 'visit' : 'visits' ?> without location (not on the map).
+                                            <?php endif; ?>
+                                        </small>
+                                    </div>
                                 </div>
                             </div>
-                            <!-- END MAP DATA-->
-                        </div>
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>Brazil
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap2"></div>
+
+                            <!-- Top cities -->
+                            <div class="col-lg-4">
+                                <h2 class="title-1 m-b-25">Top cities</h2>
+                                <div class="au-card au-card--bg-blue au-card-top-countries m-b-40">
+                                    <div class="au-card-inner">
+                                        <div class="table-responsive">
+                                            <table class="table table-top-countries">
+                                                <tbody>
+                                                    <?php if (!$topCities): ?>
+                                                        <tr>
+                                                            <td>No visits for this filter.</td>
+                                                        </tr>
+                                                    <?php endif; ?>
+                                                    <?php foreach ($topCities as $place): ?>
+                                                        <tr>
+                                                            <td><?= e($place['city']) ?>, <?= e($place['country']) ?></td>
+                                                            <td class="text-end"><?= number_format($place['count']) ?></td>
+                                                        </tr>
+                                                    <?php endforeach; ?>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <!-- END MAP DATA-->
                         </div>
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>Europe
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap3"></div>
-                                </div>
-                            </div>
-                            <!-- END MAP DATA-->
-                        </div>
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>France
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap4"></div>
-                                </div>
-                            </div>
-                            <!-- END MAP DATA-->
-                        </div>
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>Germany
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap5"></div>
-                                </div>
-                            </div>
-                            <!-- END MAP DATA-->
-                        </div>
-                        <div class="col-md-6">
-                            <!-- MAP DATA-->
-                            <div class="map-data m-b-40">
-                                <h3 class="title-3 m-b-30">
-                                    <i class="zmdi zmdi-map"></i>Russia
-                                </h3>
-                                <div class="map-wrap">
-                                    <div class="vmap" id="vmap6"></div>
-                                </div>
-                            </div>
-                            <!-- END MAP DATA-->
-                            <!-- END PAGE CONTAINER-->
-                        </div>
-                    </div>
+                    <?php endif; ?>
+
                     <div class="row">
                         <div class="col-md-12">
                             <div class="copyright">
@@ -167,12 +245,12 @@ require_login();
                 </div>
             </div>
         </div>
+        <!-- END MAIN CONTENT-->
     </div>
 
-    </div>
-
-    <!-- Bootstrap 5 JS-->
+    <!-- Jquery JS-->
     <script src="js/vanilla-utils.js"></script>
+    <!-- Bootstrap JS-->
     <script src="vendor/bootstrap-5.3.8.bundle.min.js"></script>
     <!-- Vendor JS       -->
     <script src="vendor/perfect-scrollbar/perfect-scrollbar-1.5.6.min.js"></script>
@@ -180,372 +258,70 @@ require_login();
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-
-    <!-- Modern JS-->
+    <!-- Main JS-->
     <script src="js/bootstrap5-init.js"></script>
+    <script src="js/main-vanilla.js"></script>
     <script src="js/swiper-bundle-11.2.10.min.js"></script>
     <script src="js/aos.js"></script>
-    <script src="js/modern-plugins.js"></script> <!-- Main JS-->
-    <script src="js/main-vanilla.js"></script>
+    <script src="js/modern-plugins.js"></script>
 
-    <!-- Initialize Leaflet Maps for map.php only -->
+    <!-- Visitor map (real data) -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Only initialize if this is map.php
-            const isMapPage = window.location.pathname.includes('map.php') || document.title.includes('Maps');
-
-            if (!isMapPage || typeof L === 'undefined') {
+        (() => {
+            "use strict";
+            const container = document.getElementById('visitorMap');
+            if (!container || typeof L === 'undefined') {
                 return;
             }
 
-            // Map configurations for different regions
-            const mapConfigs = [{
-                    id: 'vmap',
-                    center: [20, 0],
-                    zoom: 2,
-                    title: 'World Map',
-                    data: [{
-                            name: 'United States',
-                            lat: 39.8283,
-                            lng: -98.5795,
-                            value: 45000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'United Kingdom',
-                            lat: 55.3781,
-                            lng: -3.4360,
-                            value: 32000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Germany',
-                            lat: 51.1657,
-                            lng: 10.4515,
-                            value: 28000,
-                            color: '#ff9800'
-                        },
-                        {
-                            name: 'Japan',
-                            lat: 36.2048,
-                            lng: 138.2529,
-                            value: 35000,
-                            color: '#e91e63'
-                        },
-                        {
-                            name: 'Australia',
-                            lat: -25.2744,
-                            lng: 133.7751,
-                            value: 22000,
-                            color: '#9c27b0'
-                        },
-                        {
-                            name: 'Brazil',
-                            lat: -14.2350,
-                            lng: -51.9253,
-                            value: 18000,
-                            color: '#f44336'
-                        },
-                        {
-                            name: 'India',
-                            lat: 20.5937,
-                            lng: 78.9629,
-                            value: 25000,
-                            color: '#3f51b5'
-                        },
-                        {
-                            name: 'China',
-                            lat: 35.8617,
-                            lng: 104.1954,
-                            value: 40000,
-                            color: '#00bcd4'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap1',
-                    center: [39.8283, -95.5795],
-                    zoom: 4,
-                    title: 'USA Map',
-                    data: [{
-                            name: 'New York',
-                            lat: 40.7128,
-                            lng: -74.0060,
-                            value: 15000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'Los Angeles',
-                            lat: 34.0522,
-                            lng: -118.2437,
-                            value: 12000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Chicago',
-                            lat: 41.8781,
-                            lng: -87.6298,
-                            value: 8000,
-                            color: '#ff9800'
-                        },
-                        {
-                            name: 'Houston',
-                            lat: 29.7604,
-                            lng: -95.3698,
-                            value: 6000,
-                            color: '#e91e63'
-                        },
-                        {
-                            name: 'Miami',
-                            lat: 25.7617,
-                            lng: -80.1918,
-                            value: 4000,
-                            color: '#9c27b0'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap2',
-                    center: [-14.2350, -51.9253],
-                    zoom: 4,
-                    title: 'Brazil Map',
-                    data: [{
-                            name: 'São Paulo',
-                            lat: -23.5505,
-                            lng: -46.6333,
-                            value: 8000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'Rio de Janeiro',
-                            lat: -22.9068,
-                            lng: -43.1729,
-                            value: 6000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Brasília',
-                            lat: -15.8267,
-                            lng: -47.9218,
-                            value: 4000,
-                            color: '#ff9800'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap3',
-                    center: [54.5260, 15.2551],
-                    zoom: 4,
-                    title: 'Europe Map',
-                    data: [{
-                            name: 'London',
-                            lat: 51.5074,
-                            lng: -0.1278,
-                            value: 12000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'Paris',
-                            lat: 48.8566,
-                            lng: 2.3522,
-                            value: 10000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Berlin',
-                            lat: 52.5200,
-                            lng: 13.4050,
-                            value: 8000,
-                            color: '#ff9800'
-                        },
-                        {
-                            name: 'Madrid',
-                            lat: 40.4168,
-                            lng: -3.7038,
-                            value: 6000,
-                            color: '#e91e63'
-                        },
-                        {
-                            name: 'Rome',
-                            lat: 41.9028,
-                            lng: 12.4964,
-                            value: 5000,
-                            color: '#9c27b0'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap4',
-                    center: [46.6034, 1.8883],
-                    zoom: 6,
-                    title: 'France Map',
-                    data: [{
-                            name: 'Paris',
-                            lat: 48.8566,
-                            lng: 2.3522,
-                            value: 10000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'Lyon',
-                            lat: 45.7640,
-                            lng: 4.8357,
-                            value: 4000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Marseille',
-                            lat: 43.2965,
-                            lng: 5.3698,
-                            value: 3000,
-                            color: '#ff9800'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap5',
-                    center: [51.1657, 10.4515],
-                    zoom: 6,
-                    title: 'Germany Map',
-                    data: [{
-                            name: 'Berlin',
-                            lat: 52.5200,
-                            lng: 13.4050,
-                            value: 8000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'Munich',
-                            lat: 48.1351,
-                            lng: 11.5820,
-                            value: 5000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Hamburg',
-                            lat: 53.5511,
-                            lng: 9.9937,
-                            value: 4000,
-                            color: '#ff9800'
-                        }
-                    ]
-                },
-                {
-                    id: 'vmap6',
-                    center: [61.5240, 105.3188],
-                    zoom: 3,
-                    title: 'Russia Map',
-                    data: [{
-                            name: 'Moscow',
-                            lat: 55.7558,
-                            lng: 37.6176,
-                            value: 12000,
-                            color: '#00b5e9'
-                        },
-                        {
-                            name: 'St. Petersburg',
-                            lat: 59.9311,
-                            lng: 30.3609,
-                            value: 6000,
-                            color: '#4caf50'
-                        },
-                        {
-                            name: 'Novosibirsk',
-                            lat: 55.0084,
-                            lng: 82.9357,
-                            value: 3000,
-                            color: '#ff9800'
-                        }
-                    ]
-                }
-            ];
+            const places = <?= js(array_values($places)) ?>;
 
-            // Initialize each map
-            mapConfigs.forEach(config => {
-                const mapContainer = document.getElementById(config.id);
-                if (mapContainer && typeof L !== 'undefined' && !mapContainer._leaflet_id) {
-                    try {
-                        // Initialize the map
-                        const map = L.map(config.id, {
-                            center: config.center,
-                            zoom: config.zoom,
-                            zoomControl: true,
-                            scrollWheelZoom: false,
-                            doubleClickZoom: true,
-                            attributionControl: false
-                        });
-
-                        // Add tile layer
-                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                            attribution: '',
-                            maxZoom: 18,
-                            minZoom: 1
-                        }).addTo(map);
-
-                        // Add markers for each data point
-                        config.data.forEach(point => {
-                            const marker = L.circleMarker([point.lat, point.lng], {
-                                radius: Math.sqrt(point.value / 200) + 3,
-                                fillColor: point.color,
-                                color: '#fff',
-                                weight: 2,
-                                opacity: 1,
-                                fillOpacity: 0.7
-                            }).addTo(map);
-
-                            // Add popup with location info
-                            marker.bindPopup(`
-                            <div style="text-align: center; padding: 5px;">
-                                <strong>${point.name}</strong><br>
-                                <span style="color: ${point.color}; font-weight: bold;">$${point.value.toLocaleString()}</span>
-                            </div>
-                        `);
-
-                            // Hover effects
-                            marker.on('mouseover', function() {
-                                this.setStyle({
-                                    fillOpacity: 0.9,
-                                    weight: 3
-                                });
-                            });
-
-                            marker.on('mouseout', function() {
-                                this.setStyle({
-                                    fillOpacity: 0.7,
-                                    weight: 2
-                                });
-                            });
-                        });
-
-                        // Add title control
-                        const info = L.control({
-                            position: 'topright'
-                        });
-                        info.onAdd = function() {
-                            const div = L.DomUtil.create('div', 'info');
-                            div.innerHTML = `<div style="background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">${config.title}</div>`;
-                            return div;
-                        };
-                        info.addTo(map);
-
-                    } catch (error) {
-                        console.error(`Error initializing ${config.title}:`, error);
-                        // Fallback content
-                        mapContainer.innerHTML = `
-                        <div style="height: 100%; display: flex; align-items: center; justify-content: center; background: #f8f9fa; color: #666; border-radius: 8px;">
-                            <div style="text-align: center;">
-                                <i class="fas fa-map-marker-alt" style="font-size: 24px; margin-bottom: 8px;"></i>
-                                <div style="font-size: 14px;">${config.title}</div>
-                                <div style="font-size: 12px; opacity: 0.7;">Loading failed</div>
-                            </div>
-                        </div>
-                    `;
-                    }
-                }
+            const map = L.map(container, {
+                center: [20, 0],
+                zoom: 2,
+                scrollWheelZoom: false,
+                worldCopyJump: true
             });
 
-            console.log('All Leaflet maps initialized successfully');
-        });
+            // OpenStreetMap requires this attribution to be visible.
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                minZoom: 1,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            const bounds = [];
+            places.forEach((place) => {
+                const radius = Math.min(30, 6 + Math.sqrt(place.count) * 3);
+                const marker = L.circleMarker([place.lat, place.lon], {
+                    radius: radius,
+                    fillColor: '#00b5e9',
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.7
+                }).addTo(map);
+
+                // Built as plain text (no HTML) because the names come from an external API.
+                const popup = document.createElement('div');
+                const title = document.createElement('strong');
+                title.textContent = place.city + ', ' + place.country;
+                popup.appendChild(title);
+                popup.appendChild(document.createElement('br'));
+                popup.appendChild(document.createTextNode(place.count + (place.count === 1 ? ' visit' : ' visits')));
+                marker.bindPopup(popup);
+
+                marker.on('mouseover', function () { this.setStyle({ fillOpacity: 0.9, weight: 3 }); });
+                marker.on('mouseout', function () { this.setStyle({ fillOpacity: 0.7, weight: 2 }); });
+
+                bounds.push([place.lat, place.lon]);
+            });
+
+            // Zoom to show every circle (but not too close when there is only one city).
+            if (bounds.length > 0) {
+                map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
+            }
+        })();
     </script>
 
 </body>

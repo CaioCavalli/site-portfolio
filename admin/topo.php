@@ -39,7 +39,7 @@
                         </li>
                         <li>
                             <a href="map.php">
-                                <i class="fas fa-map-marker-alt"></i>Maps</a>
+                                <i class="fa-solid fa-location-dot"></i>Visitor map</a>
                         </li>
                     </ul>
                 </div>
@@ -79,7 +79,7 @@
                         </li>
                         <li>
                             <a href="map.php">
-                                <i class="fas fa-map-marker-alt"></i>Maps</a>
+                                <i class="fa-solid fa-location-dot"></i>Visitor map</a>
                         </li>
                     </ul>
                 </nav>
